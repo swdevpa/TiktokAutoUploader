@@ -27,11 +27,12 @@ def login(login_name: str):
 		return session_cookie["value"]
 
 	browser = Browser.get()
-	response = browser.driver.get(os.getenv("TIKTOK_LOGIN_URL"))
+	driver = browser.driver
+	driver.get(os.getenv("TIKTOK_LOGIN_URL"))
 
 	session_cookies = []
 	while not session_cookies:
-		for cookie in browser.driver.get_cookies():
+		for cookie in driver.get_cookies():
 			if cookie["name"] in ["sessionid", "tt-target-idc"]:
 				if cookie["name"] == "sessionid":
 					cookie_name = cookie
@@ -40,7 +41,8 @@ def login(login_name: str):
 	# print("Session cookie found: ", session_cookie["value"])
 	print("Account successfully saved.")
 	browser.save_cookies(f"tiktok_session-{login_name}", session_cookies)
-	browser.driver.quit()
+	driver.quit()
+	Browser._Browser__instance = None
 
 	return cookie_name.get('value', '') if cookie_name else ''
 

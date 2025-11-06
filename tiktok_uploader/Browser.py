@@ -41,27 +41,29 @@ class Browser:
 
     @staticmethod
     def get():
-        # print("Browser.getBrowser() called")
         if Browser.__instance is None:
             with threading.Lock():
                 if Browser.__instance is None:
-                    # print("Creating new browser instance due to no instance found")
                     Browser.__instance = Browser()
         return Browser.__instance
 
     def __init__(self):
         if Browser.__instance is not None:
             raise Exception("This class is a singleton!")
-        else:
-            Browser.__instance = self
         self.user_agent = ""
+        self._driver = None
         options = uc.ChromeOptions()
         # Proxies not supported on login.
         # if WITH_PROXIES:
         #     options.add_argument('--proxy-server={}'.format(PROXIES[0]))
         _patch_packaging_version()
         _ensure_ssl_certificates()
-        self._driver = uc.Chrome(options=options)
+        try:
+            self._driver = uc.Chrome(options=options)
+        except Exception as exc:
+            Browser.__instance = None
+            raise RuntimeError("Could not start a Chrome session for login. Please ensure Chrome is installed and retry.") from exc
+        Browser.__instance = self
         self.with_random_user_agent()
 
     def with_random_user_agent(self, fallback=None):
@@ -80,6 +82,8 @@ class Browser:
 
     @property
     def driver(self):
+        if self._driver is None:
+            raise RuntimeError("Browser session is not available.")
         return self._driver
 
     def load_cookies_from_file(self, filename):

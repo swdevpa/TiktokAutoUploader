@@ -198,8 +198,12 @@ class TiktokUploaderGUI(tk.Tk):
         from tkinter import simpledialog
         user_name = simpledialog.askstring("Add User", "Enter a name for this user:")
         if user_name:
-            tiktok.login(user_name)
-            self.update_user_list()
+            try:
+                tiktok.login(user_name)
+            except RuntimeError as err:
+                messagebox.showerror("Login failed", str(err))
+            else:
+                self.update_user_list()
 
     def remove_user(self):
         selected_user = self.user_listbox.get(tk.ACTIVE)
