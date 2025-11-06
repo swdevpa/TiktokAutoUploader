@@ -2,19 +2,24 @@
 import os
 import threading
 import tkinter as tk
-from typing import Optional
-from tkinter import filedialog, messagebox, ttk
 from datetime import datetime
+from tkinter import filedialog, messagebox, ttk
+from typing import Optional
+from zoneinfo import ZoneInfo
+
+from tkcalendar import DateEntry
 
 from tiktok_uploader import tiktok
 from tiktok_uploader.Video import Video
 from tiktok_uploader.gemini_caption import GeminiCaptionError, GeminiCaptionService
 
+US_EASTERN = ZoneInfo("America/New_York")
+
 class TiktokUploaderGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Tiktok Auto Uploader")
-        self.geometry("800x600")
+        self.geometry("980x720")
 
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(pady=10, padx=10, fill="both", expand=True)
@@ -101,13 +106,49 @@ class TiktokUploaderGUI(tk.Tk):
         self.ai_checkbox.grid(row=5, column=1, padx=10, pady=(0, 5), sticky="w")
 
         # Schedule time
-        schedule_frame = ttk.Frame(upload_tab)
+        schedule_frame = ttk.LabelFrame(upload_tab, text="Schedule (US Eastern)")
         schedule_frame.grid(row=6, column=1, padx=10, pady=(0, 5), sticky="ew")
         schedule_frame.columnconfigure(1, weight=1)
-        schedule_label = ttk.Label(schedule_frame, text="Schedule (seconds from now, 0 for immediate):")
+        schedule_frame.columnconfigure(3, weight=1)
+
+        schedule_label = ttk.Label(schedule_frame, text="Offset (seconds, optional):")
         schedule_label.grid(row=0, column=0, sticky="w")
         self.schedule_entry = ttk.Entry(schedule_frame)
-        self.schedule_entry.grid(row=0, column=1, padx=(8, 0), sticky="ew")
+        self.schedule_entry.grid(row=0, column=1, padx=(8, 0), pady=(0, 5), sticky="ew")
+        ttk.Button(schedule_frame, text="Clear", command=self._clear_schedule_picker).grid(row=0, column=3, padx=(8, 0), pady=(0, 5), sticky="e")
+
+        self.schedule_date_var = tk.StringVar(value="")
+        ttk.Label(schedule_frame, text="Date:").grid(row=1, column=0, sticky="w")
+        self.schedule_date_picker = DateEntry(
+            schedule_frame,
+            width=14,
+            textvariable=self.schedule_date_var,
+            font=("TkDefaultFont", 10),
+            selectforeground="white",
+            date_pattern="yyyy-mm-dd",
+        )
+        self.schedule_date_picker.grid(row=1, column=1, padx=(8, 0), pady=(0, 5), sticky="w")
+        self.schedule_date_var.set("")
+        self.schedule_date_picker.delete(0, tk.END)
+        ttk.Button(schedule_frame, text="Today", command=self._set_schedule_today).grid(row=1, column=2, padx=(10, 0), pady=(0, 5), sticky="ew")
+
+        self.schedule_time_var = tk.StringVar(value="")
+        ttk.Label(schedule_frame, text="Time:").grid(row=2, column=0, sticky="w")
+        self.schedule_time_combobox = ttk.Combobox(
+            schedule_frame,
+            textvariable=self.schedule_time_var,
+            values=self._time_picker_options(),
+            state="readonly",
+        )
+        self.schedule_time_combobox.grid(row=2, column=1, padx=(8, 0), pady=(0, 5), sticky="ew")
+        ttk.Button(schedule_frame, text="Now", command=self._set_schedule_now).grid(row=2, column=2, padx=(10, 0), pady=(0, 5), sticky="ew")
+
+        schedule_hint = ttk.Label(
+            schedule_frame,
+            text="Leave fields empty for immediate upload. Eastern time is used.",
+            foreground="gray",
+        )
+        schedule_hint.grid(row=3, column=0, columnspan=4, sticky="w")
 
         # Interaction permissions
         permissions_frame = ttk.Frame(upload_tab)
@@ -324,18 +365,12 @@ class TiktokUploaderGUI(tk.Tk):
             self._report_status("Upload abgebrochen: fehlende Angaben.")
             return
 
-        schedule_value = self.schedule_entry.get().strip()
-        if schedule_value:
-            try:
-                schedule_time = int(schedule_value)
-                if schedule_time < 0:
-                    raise ValueError
-            except ValueError:
-                messagebox.showerror("Invalid schedule", "Schedule time must be a non-negative integer (seconds).")
-                self._report_status("Upload abgebrochen: ungültige Planungszeit.")
-                return
-        else:
-            schedule_time = 0
+        try:
+            schedule_time = self._resolve_schedule_seconds()
+        except ValueError as err:
+            messagebox.showerror("Invalid schedule", str(err))
+            self._report_status("Upload abgebrochen: ungültige Planungszeit.")
+            return
 
         upload_type = self.upload_type.get()
         source_reference = source
@@ -369,6 +404,74 @@ class TiktokUploaderGUI(tk.Tk):
         self._report_status("Starte Upload-Vorbereitung.")
         self._upload_thread = threading.Thread(target=self._upload_worker, args=(job,), daemon=True)
         self._upload_thread.start()
+
+    def _resolve_schedule_seconds(self) -> int:
+        raw_seconds = self.schedule_entry.get().strip()
+        date_text = getattr(self, "schedule_date_var", tk.StringVar()).get().strip()
+        time_text = getattr(self, "schedule_time_var", tk.StringVar()).get().strip()
+
+        if date_text or time_text:
+            if not date_text or not time_text:
+                raise ValueError("Bitte sowohl Datum als auch Uhrzeit angeben oder beide leer lassen.")
+            try:
+                parsed_dt = datetime.strptime(f"{date_text} {time_text}", "%Y-%m-%d %H:%M")
+            except ValueError as exc:
+                raise ValueError("Datum/Uhrzeit müssen dem Format YYYY-MM-DD und HH:MM (24h) entsprechen.") from exc
+            target_dt = parsed_dt.replace(tzinfo=US_EASTERN)
+            delta_seconds = int((target_dt - datetime.now(US_EASTERN)).total_seconds())
+            if delta_seconds < 0:
+                raise ValueError("Der gewählte Zeitpunkt liegt in der Vergangenheit (US Eastern).")
+            # Reflect computed offset so the previous behaviour stays visible.
+            self.schedule_entry.delete(0, tk.END)
+            self.schedule_entry.insert(0, str(delta_seconds))
+            return delta_seconds
+
+        if raw_seconds:
+            try:
+                schedule_seconds = int(raw_seconds)
+            except ValueError as exc:
+                raise ValueError("Schedule time must be a non-negative integer (seconds).") from exc
+            if schedule_seconds < 0:
+                raise ValueError("Schedule time must be a non-negative integer (seconds).")
+            return schedule_seconds
+
+        return 0
+
+    def _time_picker_options(self):
+        if not hasattr(self, "_schedule_time_options"):
+            options = []
+            for hour in range(24):
+                for minute in range(0, 60, 5):
+                    options.append(f"{hour:02d}:{minute:02d}")
+            self._schedule_time_options = options
+        return self._schedule_time_options
+
+    def _set_schedule_today(self):
+        today = datetime.now(US_EASTERN).date()
+        if hasattr(self, "schedule_date_picker"):
+            self.schedule_date_picker.set_date(today)
+        self.schedule_date_var.set(today.strftime("%Y-%m-%d"))
+
+    def _set_schedule_now(self):
+        now = datetime.now(US_EASTERN).replace(second=0, microsecond=0)
+        rounded_minute = (now.minute // 5) * 5
+        now = now.replace(minute=rounded_minute)
+        self._set_schedule_today()
+        formatted_time = f"{now.hour:02d}:{now.minute:02d}"
+        self.schedule_time_var.set(formatted_time)
+        if hasattr(self, "schedule_time_combobox"):
+            self.schedule_time_combobox.set(formatted_time)
+
+    def _clear_schedule_picker(self):
+        self.schedule_entry.delete(0, tk.END)
+        if hasattr(self, "schedule_date_var"):
+            self.schedule_date_var.set("")
+        if hasattr(self, "schedule_time_var"):
+            self.schedule_time_var.set("")
+        if hasattr(self, "schedule_date_picker"):
+            self.schedule_date_picker.delete(0, tk.END)
+        if hasattr(self, "schedule_time_combobox"):
+            self.schedule_time_combobox.set("")
 
     def generate_caption_with_gemini(self):
         if self._caption_thread and self._caption_thread.is_alive():
