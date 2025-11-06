@@ -14,6 +14,7 @@ class TiktokUploaderGUI(tk.Tk):
         self.notebook.pack(pady=10, padx=10, fill="both", expand=True)
 
         self.video_dir = os.path.join(os.getcwd(), "VideosDirPath")
+        self.visibility_options = {"Public": 0, "Private": 1}
 
         self.create_upload_tab()
         self.create_users_tab()
@@ -57,9 +58,57 @@ class TiktokUploaderGUI(tk.Tk):
         self.caption_scrollbar.grid(row=3, column=2, padx=(0, 10), pady=10, sticky="ns")
         self.caption_text.configure(yscrollcommand=self.caption_scrollbar.set)
 
+        # AI label toggle
+        self.ai_generated_var = tk.BooleanVar(value=False)
+        self.ai_checkbox = ttk.Checkbutton(upload_tab, text="Mark as AI-generated", variable=self.ai_generated_var)
+        self.ai_checkbox.grid(row=4, column=1, padx=10, pady=(0, 5), sticky="w")
+
+        # Schedule time
+        schedule_frame = ttk.Frame(upload_tab)
+        schedule_frame.grid(row=5, column=1, padx=10, pady=(0, 5), sticky="ew")
+        schedule_frame.columnconfigure(1, weight=1)
+        schedule_label = ttk.Label(schedule_frame, text="Schedule (seconds from now, 0 for immediate):")
+        schedule_label.grid(row=0, column=0, sticky="w")
+        self.schedule_entry = ttk.Entry(schedule_frame)
+        self.schedule_entry.grid(row=0, column=1, padx=(8, 0), sticky="ew")
+
+        # Interaction permissions
+        permissions_frame = ttk.Frame(upload_tab)
+        permissions_frame.grid(row=6, column=1, padx=10, pady=(0, 5), sticky="w")
+        self.allow_comment_var = tk.BooleanVar(value=True)
+        self.allow_duet_var = tk.BooleanVar(value=False)
+        self.allow_stitch_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(permissions_frame, text="Allow Comments", variable=self.allow_comment_var).grid(row=0, column=0, padx=(0, 10), sticky="w")
+        ttk.Checkbutton(permissions_frame, text="Allow Duet", variable=self.allow_duet_var).grid(row=0, column=1, padx=(0, 10), sticky="w")
+        ttk.Checkbutton(permissions_frame, text="Allow Stitch", variable=self.allow_stitch_var).grid(row=0, column=2, sticky="w")
+
+        # Visibility
+        visibility_frame = ttk.Frame(upload_tab)
+        visibility_frame.grid(row=7, column=1, padx=10, pady=(0, 5), sticky="ew")
+        ttk.Label(visibility_frame, text="Visibility:").grid(row=0, column=0, sticky="w")
+        self.visibility_combobox = ttk.Combobox(visibility_frame, state="readonly", values=list(self.visibility_options.keys()))
+        self.visibility_combobox.grid(row=0, column=1, padx=(8, 0), sticky="ew")
+        self.visibility_combobox.current(0)
+
+        # Brand settings
+        brand_frame = ttk.Frame(upload_tab)
+        brand_frame.grid(row=8, column=1, padx=10, pady=(0, 5), sticky="w")
+        self.brand_organic_var = tk.BooleanVar(value=False)
+        self.branded_content_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(brand_frame, text="Brand Organic", variable=self.brand_organic_var).grid(row=0, column=0, padx=(0, 10), sticky="w")
+        ttk.Checkbutton(brand_frame, text="Branded Content", variable=self.branded_content_var).grid(row=0, column=1, sticky="w")
+
+        # Proxy
+        proxy_frame = ttk.Frame(upload_tab)
+        proxy_frame.grid(row=9, column=1, padx=10, pady=(0, 5), sticky="ew")
+        proxy_frame.columnconfigure(1, weight=1)
+        ttk.Label(proxy_frame, text="Proxy (optional):").grid(row=0, column=0, sticky="w")
+        self.proxy_entry = ttk.Entry(proxy_frame)
+        self.proxy_entry.grid(row=0, column=1, padx=(8, 0), sticky="ew")
+
         # Upload button
         upload_button = ttk.Button(upload_tab, text="Upload", command=self.upload_video)
-        upload_button.grid(row=4, column=1, padx=10, pady=10, sticky="e")
+        upload_button.grid(row=10, column=1, padx=10, pady=10, sticky="e")
 
     def create_users_tab(self):
         users_tab = ttk.Frame(self.notebook)
@@ -172,10 +221,31 @@ class TiktokUploaderGUI(tk.Tk):
         user = self.user_combobox.get()
         source = self.source_entry.get()
         caption = self.caption_text.get("1.0", tk.END).strip()
+        ai_label = 1 if self.ai_generated_var.get() else 0
+        allow_comment = 1 if self.allow_comment_var.get() else 0
+        allow_duet = 1 if self.allow_duet_var.get() else 0
+        allow_stitch = 1 if self.allow_stitch_var.get() else 0
+        visibility_label = self.visibility_combobox.get()
+        visibility_type = self.visibility_options.get(visibility_label, 0)
+        brand_organic_type = 1 if self.brand_organic_var.get() else 0
+        branded_content_type = 1 if self.branded_content_var.get() else 0
+        proxy = self.proxy_entry.get().strip()
 
         if not user or not source or not caption:
             messagebox.showerror("Missing information", "Please select a user, choose a video, and enter a caption.")
             return
+
+        schedule_value = self.schedule_entry.get().strip()
+        if schedule_value:
+            try:
+                schedule_time = int(schedule_value)
+                if schedule_time < 0:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("Invalid schedule", "Schedule time must be a non-negative integer (seconds).")
+                return
+        else:
+            schedule_time = 0
 
         try:
             if self.upload_type.get() == "local":
@@ -185,13 +255,39 @@ class TiktokUploaderGUI(tk.Tk):
                 if not os.path.exists(video_path):
                     messagebox.showerror("Video not found", f"Video not found: {video_path}")
                     return
-                tiktok.upload_video(user, video_path, caption)
+                tiktok.upload_video(
+                    user,
+                    video_path,
+                    caption,
+                    schedule_time=schedule_time,
+                    allow_comment=allow_comment,
+                    allow_duet=allow_duet,
+                    allow_stitch=allow_stitch,
+                    visibility_type=visibility_type,
+                    brand_organic_type=brand_organic_type,
+                    branded_content_type=branded_content_type,
+                    ai_label=ai_label,
+                    proxy=proxy or None,
+                )
             else:
                 from tiktok_uploader.Video import Video
                 video_obj = Video(source, caption)
                 video_obj.is_valid_file_format()
                 video = video_obj.source_ref
-                tiktok.upload_video(user, video, caption)
+                tiktok.upload_video(
+                    user,
+                    video,
+                    caption,
+                    schedule_time=schedule_time,
+                    allow_comment=allow_comment,
+                    allow_duet=allow_duet,
+                    allow_stitch=allow_stitch,
+                    visibility_type=visibility_type,
+                    brand_organic_type=brand_organic_type,
+                    branded_content_type=branded_content_type,
+                    ai_label=ai_label,
+                    proxy=proxy or None,
+                )
         except RuntimeError as err:
             messagebox.showerror("Upload failed", str(err))
             return

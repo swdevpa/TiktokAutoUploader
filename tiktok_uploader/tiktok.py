@@ -257,10 +257,10 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 					"video_id": video_id
 				},
 				"privacy_setting_info": {
-					"visibility_type": 0,
-					"allow_duet": 1,
-					"allow_stitch": 1,
-					"allow_comment": 1
+					"visibility_type": visibility_type,
+					"allow_duet": allow_duet,
+					"allow_stitch": allow_stitch,
+					"allow_comment": allow_comment
 				}
 			}
 		],
@@ -284,6 +284,11 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 	# Add schedule_time to the payload if it's provided
 	if schedule_time > 0:
 		data["feature_common_info_list"][0]["schedule_time"] = schedule_time + int(time.time())
+
+	if ai_label:
+		aigc_payload = {"aigc_label_type": ai_label}
+		data["feature_common_info_list"][0]["aigc_info"] = dict(aigc_payload)
+		data["single_post_req_list"][0]["single_post_feature_info"]["aigc_info"] = dict(aigc_payload)
 	
 	uploaded = False
 	while True:
