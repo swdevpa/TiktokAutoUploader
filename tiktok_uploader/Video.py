@@ -1,7 +1,6 @@
 from .Config import Config
 
-from moviepy.editor import *
-from moviepy.editor import VideoFileClip, AudioFileClip
+from moviepy import AudioFileClip, ColorClip, CompositeVideoClip, TextClip, VideoFileClip
 from pytube import YouTube
 from pytube.innertube import InnerTube
 from pytube.exceptions import RegexMatchError
