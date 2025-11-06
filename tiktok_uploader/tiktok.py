@@ -5,7 +5,7 @@ from requests_auth_aws_sigv4 import AWSSigV4
 from tiktok_uploader.cookies import load_cookies_from_file
 from tiktok_uploader.Browser import Browser
 from tiktok_uploader.bot_utils import *
-from tiktok_uploader import Config, Video, eprint
+from tiktok_uploader import Config, Video
 from dotenv import load_dotenv
 
 
@@ -58,8 +58,7 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 	dc_id = next((c["value"] for c in cookies if c["name"] == 'tt-target-idc'), None)
 	
 	if not session_id:
-		eprint("No cookie with Tiktok session id found: use login to save session id")
-		sys.exit(1)
+		raise RuntimeError("No cookie with Tiktok session id found: use login to save session id")
 	if not dc_id:
 		print("[WARNING]: Please login, tiktok datacenter id must be allocated, or may fail")
 		dc_id = "useast2a"
@@ -445,4 +444,3 @@ if __name__ == "__main__":
 	      f"X TT Params: {json_output['x-tt-params']}\n"
 		  f"User Agent: {json_output['navigator']['user_agent']}\n"
 	      f"")
-

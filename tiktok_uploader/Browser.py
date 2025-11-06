@@ -1,7 +1,37 @@
 from .cookies import load_cookies_from_file, save_cookies_to_file
 from fake_useragent import UserAgent, FakeUserAgentError
 import undetected_chromedriver as uc
-import threading, os
+import threading, os, ssl
+import certifi
+from packaging.version import Version
+
+_CERT_SETUP_DONE = False
+_PACKAGING_PATCHED = False
+
+
+def _ensure_ssl_certificates():
+    """Ensure urllib/ssl stack picks up a usable CA bundle (fixes macOS Python installs)."""
+    global _CERT_SETUP_DONE
+    if _CERT_SETUP_DONE:
+        return
+    cert_path = certifi.where()
+    os.environ.setdefault("SSL_CERT_FILE", cert_path)
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", cert_path)
+    ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=cert_path)
+    _CERT_SETUP_DONE = True
+
+
+def _patch_packaging_version():
+    """Backfill attrs expected by undetected_chromedriver when distutils.LooseVersion was used."""
+    global _PACKAGING_PATCHED
+    if _PACKAGING_PATCHED:
+        return
+
+    if not hasattr(Version, "version"):
+        Version.version = property(lambda self: self.release)  # type: ignore[attr-defined]
+    if not hasattr(Version, "vstring"):
+        Version.vstring = property(lambda self: self.public)  # type: ignore[attr-defined]
+    _PACKAGING_PATCHED = True
 
 
 WITH_PROXIES = False
@@ -29,6 +59,8 @@ class Browser:
         # Proxies not supported on login.
         # if WITH_PROXIES:
         #     options.add_argument('--proxy-server={}'.format(PROXIES[0]))
+        _patch_packaging_version()
+        _ensure_ssl_certificates()
         self._driver = uc.Chrome(options=options)
         self.with_random_user_agent()
 

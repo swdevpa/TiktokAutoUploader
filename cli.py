@@ -73,7 +73,11 @@ if __name__ == "__main__":
                     print(f'[-] {name}')
                 sys.exit(1)
 
-        tiktok.upload_video(args.users, args.video,  args.title, args.schedule, args.comment, args.duet, args.stitch, args.visibility, args.brandorganic, args.brandcontent, args.ailabel, args.proxy)
+        try:
+            tiktok.upload_video(args.users, args.video,  args.title, args.schedule, args.comment, args.duet, args.stitch, args.visibility, args.brandorganic, args.brandcontent, args.ailabel, args.proxy)
+        except RuntimeError as exc:
+            eprint(str(exc))
+            sys.exit(1)
 
     elif args.subcommand == "show":
         # if flag is c then show cookie names
@@ -81,8 +85,9 @@ if __name__ == "__main__":
             print("User Names logged in: ")
             cookie_dir = os.path.join(os.getcwd(), Config.get().cookies_dir)
             for name in os.listdir(cookie_dir):
-                if name.startswith("tiktok_session-"):
-                    print(f'[-] {name.split("tiktok_session-")[1]}')
+                if name.startswith("tiktok_session-") and name.endswith(".cookie"):
+                    username = name[len("tiktok_session-"):-len(".cookie")]
+                    print(f'[-] {username}')
 
         # if flag is v then show video names
         if args.videos:
@@ -95,5 +100,3 @@ if __name__ == "__main__":
 
     else:
         eprint("Invalid subcommand. Use 'login' or 'upload' or 'show'.")
-
-

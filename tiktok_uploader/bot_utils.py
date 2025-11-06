@@ -6,8 +6,25 @@ user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 
 
 def subprocess_jsvmp(js, user_agent, url):
-	proc = subprocess.Popen(['node', js, url, user_agent], stdout=subprocess.PIPE)
-	return proc.stdout.read().decode('utf-8')
+	proc = subprocess.Popen(['node', js, url, user_agent], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+	stdout, stderr = proc.communicate()
+	error_msg = stderr.decode('utf-8', errors='ignore').strip()
+	if proc.returncode != 0 or error_msg:
+		if "Cannot find module 'playwright-chromium'" in error_msg:
+			raise RuntimeError(
+				"Node dependency 'playwright-chromium' is missing. "
+				"Run 'npm install' inside tiktok_uploader/tiktok-signature to install it."
+			)
+		if "Executable doesn't exist" in error_msg or "browserType.launch" in error_msg:
+			raise RuntimeError(
+				"Playwright browser binaries are missing. "
+				"Run 'npx playwright install chromium' inside tiktok_uploader/tiktok-signature."
+			)
+		raise RuntimeError(f"Signature helper failed: {error_msg or 'unknown error'}")
+	output = stdout.decode('utf-8').strip()
+	if not output:
+		raise RuntimeError("Signature helper returned no data.")
+	return output
 
 
 def generate_random_string(length, underline):
