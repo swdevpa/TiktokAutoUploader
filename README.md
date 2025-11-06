@@ -145,6 +145,15 @@ python cli.py login -h
 python cli.py upload -h
 ```
 
+### Gemini Caption Generator 🤖
+
+The GUI now supports generating TikTok-ready captions with Gemini 2.5 Pro.
+
+- Install the updated dependencies (`pip install -r requirements.txt`).
+- Create a Google API key and export it as `GEMINI_API_KEY`.
+- (Optional) Override the model with `GEMINI_MODEL` if your account uses a different Gemini release.
+- Open the GUI, pick a local video, then press **Generate Caption with Gemini** to fill the caption field with an English title, description, and hashtags based on the included PDF playbooks.
+
  ----
 
 ## Professional Software💼

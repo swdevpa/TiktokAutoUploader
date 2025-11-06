@@ -1,8 +1,12 @@
 
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
 import os
+import threading
+import tkinter as tk
+from typing import Optional
+from tkinter import filedialog, messagebox, ttk
+
 from tiktok_uploader import tiktok
+from tiktok_uploader.gemini_caption import GeminiCaptionError, GeminiCaptionService
 
 class TiktokUploaderGUI(tk.Tk):
     def __init__(self):
@@ -24,6 +28,11 @@ class TiktokUploaderGUI(tk.Tk):
             "euw1",
             "asia-singapore-1",
         ]
+        self.framework_pdfs = [
+            os.path.join(os.getcwd(), "Scale Your App to 50k:mo Installs with Organic Content 29-10.pdf"),
+            os.path.join(os.getcwd(), "TikTok Algo Guide.pdf"),
+        ]
+        self._caption_thread: Optional[threading.Thread] = None
 
         self.create_upload_tab()
         self.create_users_tab()
@@ -67,14 +76,29 @@ class TiktokUploaderGUI(tk.Tk):
         self.caption_scrollbar.grid(row=3, column=2, padx=(0, 10), pady=10, sticky="ns")
         self.caption_text.configure(yscrollcommand=self.caption_scrollbar.set)
 
+        self.caption_status_var = tk.StringVar(value="")
+        self.generate_caption_button = ttk.Button(
+            upload_tab,
+            text="Generate Caption with Gemini",
+            command=self.generate_caption_with_gemini,
+        )
+        self.generate_caption_button.grid(row=4, column=1, padx=10, pady=(0, 5), sticky="e")
+        self.caption_status_label = tk.Label(
+            upload_tab,
+            textvariable=self.caption_status_var,
+            fg="green",
+            bg=self.cget("background"),
+        )
+        self.caption_status_label.grid(row=4, column=0, padx=10, pady=(0, 5), sticky="w")
+
         # AI label toggle
         self.ai_generated_var = tk.BooleanVar(value=False)
         self.ai_checkbox = ttk.Checkbutton(upload_tab, text="Mark as AI-generated", variable=self.ai_generated_var)
-        self.ai_checkbox.grid(row=4, column=1, padx=10, pady=(0, 5), sticky="w")
+        self.ai_checkbox.grid(row=5, column=1, padx=10, pady=(0, 5), sticky="w")
 
         # Schedule time
         schedule_frame = ttk.Frame(upload_tab)
-        schedule_frame.grid(row=5, column=1, padx=10, pady=(0, 5), sticky="ew")
+        schedule_frame.grid(row=6, column=1, padx=10, pady=(0, 5), sticky="ew")
         schedule_frame.columnconfigure(1, weight=1)
         schedule_label = ttk.Label(schedule_frame, text="Schedule (seconds from now, 0 for immediate):")
         schedule_label.grid(row=0, column=0, sticky="w")
@@ -83,7 +107,7 @@ class TiktokUploaderGUI(tk.Tk):
 
         # Interaction permissions
         permissions_frame = ttk.Frame(upload_tab)
-        permissions_frame.grid(row=6, column=1, padx=10, pady=(0, 5), sticky="w")
+        permissions_frame.grid(row=7, column=1, padx=10, pady=(0, 5), sticky="w")
         self.allow_comment_var = tk.BooleanVar(value=True)
         self.allow_duet_var = tk.BooleanVar(value=False)
         self.allow_stitch_var = tk.BooleanVar(value=False)
@@ -93,7 +117,7 @@ class TiktokUploaderGUI(tk.Tk):
 
         # Visibility
         visibility_frame = ttk.Frame(upload_tab)
-        visibility_frame.grid(row=7, column=1, padx=10, pady=(0, 5), sticky="ew")
+        visibility_frame.grid(row=8, column=1, padx=10, pady=(0, 5), sticky="ew")
         ttk.Label(visibility_frame, text="Visibility:").grid(row=0, column=0, sticky="w")
         self.visibility_combobox = ttk.Combobox(visibility_frame, state="readonly", values=list(self.visibility_options.keys()))
         self.visibility_combobox.grid(row=0, column=1, padx=(8, 0), sticky="ew")
@@ -101,7 +125,7 @@ class TiktokUploaderGUI(tk.Tk):
 
         # Brand settings
         brand_frame = ttk.Frame(upload_tab)
-        brand_frame.grid(row=8, column=1, padx=10, pady=(0, 5), sticky="w")
+        brand_frame.grid(row=9, column=1, padx=10, pady=(0, 5), sticky="w")
         self.brand_organic_var = tk.BooleanVar(value=False)
         self.branded_content_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(brand_frame, text="Brand Organic", variable=self.brand_organic_var).grid(row=0, column=0, padx=(0, 10), sticky="w")
@@ -109,7 +133,7 @@ class TiktokUploaderGUI(tk.Tk):
 
         # Proxy
         proxy_frame = ttk.Frame(upload_tab)
-        proxy_frame.grid(row=9, column=1, padx=10, pady=(0, 5), sticky="ew")
+        proxy_frame.grid(row=10, column=1, padx=10, pady=(0, 5), sticky="ew")
         proxy_frame.columnconfigure(1, weight=1)
         ttk.Label(proxy_frame, text="Proxy (optional):").grid(row=0, column=0, sticky="w")
         self.proxy_entry = ttk.Entry(proxy_frame)
@@ -117,7 +141,7 @@ class TiktokUploaderGUI(tk.Tk):
 
         # Datacenter override
         datacenter_frame = ttk.Frame(upload_tab)
-        datacenter_frame.grid(row=10, column=1, padx=10, pady=(0, 5), sticky="ew")
+        datacenter_frame.grid(row=11, column=1, padx=10, pady=(0, 5), sticky="ew")
         datacenter_frame.columnconfigure(1, weight=1)
         ttk.Label(datacenter_frame, text="Datacenter (optional):").grid(row=0, column=0, sticky="w")
         self.datacenter_var = tk.StringVar(value=self.datacenter_options[0])
@@ -131,7 +155,7 @@ class TiktokUploaderGUI(tk.Tk):
 
         # Upload button
         upload_button = ttk.Button(upload_tab, text="Upload", command=self.upload_video)
-        upload_button.grid(row=11, column=1, padx=10, pady=10, sticky="e")
+        upload_button.grid(row=12, column=1, padx=10, pady=10, sticky="e")
 
     def create_users_tab(self):
         users_tab = ttk.Frame(self.notebook)
@@ -322,6 +346,57 @@ class TiktokUploaderGUI(tk.Tk):
         except RuntimeError as err:
             messagebox.showerror("Upload failed", str(err))
             return
+
+    def generate_caption_with_gemini(self):
+        if self._caption_thread and self._caption_thread.is_alive():
+            return
+
+        if self.upload_type.get() != "local":
+            messagebox.showerror("Generate caption", "Gemini caption generation currently supports local video files only.")
+            return
+
+        source = self.source_entry.get().strip()
+        if not source:
+            messagebox.showerror("Generate caption", "Please choose a local video first.")
+            return
+
+        video_path = source
+        if not os.path.isabs(video_path):
+            video_path = os.path.join(self.video_dir, video_path)
+        if not os.path.exists(video_path):
+            messagebox.showerror("Generate caption", f"Video not found: {video_path}")
+            return
+
+        self.generate_caption_button.state(["disabled"])
+        self.caption_status_var.set("Generating caption with Gemini...")
+
+        self._caption_thread = threading.Thread(
+            target=self._capture_caption_worker, args=(video_path,), daemon=True
+        )
+        self._caption_thread.start()
+
+    def _capture_caption_worker(self, video_path: str):
+        try:
+            pdfs = [path for path in self.framework_pdfs if os.path.isfile(path)]
+            service = GeminiCaptionService(pdf_paths=pdfs)
+            suggestion = service.generate_caption(video_path)
+        except GeminiCaptionError as err:
+            self.after(0, lambda: self._on_caption_generation_error(str(err)))
+        except Exception as exc:
+            self.after(0, lambda: self._on_caption_generation_error(str(exc)))
+        else:
+            self.after(0, lambda: self._on_caption_generation_success(suggestion))
+
+    def _on_caption_generation_success(self, suggestion):
+        self.generate_caption_button.state(["!disabled"])
+        self.caption_text.delete("1.0", tk.END)
+        self.caption_text.insert(tk.END, suggestion.formatted)
+        self.caption_status_var.set("Caption generated with Gemini 2.5 Pro.")
+
+    def _on_caption_generation_error(self, message: str):
+        self.generate_caption_button.state(["!disabled"])
+        self.caption_status_var.set("")
+        messagebox.showerror("Generate caption", message)
 
 
 if __name__ == "__main__":
