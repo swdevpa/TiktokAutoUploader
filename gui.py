@@ -19,10 +19,13 @@ class TiktokUploaderGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Tiktok Auto Uploader")
-        self.geometry("980x720")
+        self.geometry("980x820")
+        self.minsize(900, 750)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
 
         self.notebook = ttk.Notebook(self)
-        self.notebook.pack(pady=10, padx=10, fill="both", expand=True)
+        self.notebook.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
 
         self.video_dir = os.path.join(os.getcwd(), "VideosDirPath")
         self.visibility_options = {"Public": 0, "Private": 1}
@@ -50,64 +53,104 @@ class TiktokUploaderGUI(tk.Tk):
     def create_upload_tab(self):
         upload_tab = ttk.Frame(self.notebook)
         self.notebook.add(upload_tab, text="Upload")
-        upload_tab.columnconfigure(1, weight=1)
-        upload_tab.rowconfigure(3, weight=1)
+        upload_tab.columnconfigure(0, weight=1)
+        upload_tab.rowconfigure(0, weight=1)
+        upload_tab.rowconfigure(1, weight=0)
 
-        # User selection
-        user_label = ttk.Label(upload_tab, text="Select User:")
-        user_label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        form_container = ttk.Frame(upload_tab, padding=(0, 5))
+        form_container.grid(row=0, column=0, sticky="nsew")
+        form_container.columnconfigure(0, weight=1)
+        form_container.columnconfigure(1, weight=1)
 
-        self.user_combobox = ttk.Combobox(upload_tab, state="readonly")
-        self.user_combobox.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
+        status_container = ttk.Frame(upload_tab)
+        status_container.grid(row=1, column=0, pady=(5, 0), sticky="nsew")
+
+        left_column = ttk.Frame(form_container)
+        left_column.grid(row=0, column=0, padx=(0, 5), sticky="nsew")
+        left_column.columnconfigure(0, weight=1)
+        left_column.rowconfigure(1, weight=1)
+
+        right_column = ttk.Frame(form_container)
+        right_column.grid(row=0, column=1, padx=(5, 0), sticky="nsew")
+        right_column.columnconfigure(0, weight=1)
+
+        # Upload details section
+        details_frame = ttk.LabelFrame(left_column, text="Upload Details")
+        details_frame.grid(row=0, column=0, padx=5, pady=(0, 5), sticky="ew")
+        details_frame.columnconfigure(1, weight=1)
+        details_frame.columnconfigure(2, weight=1)
+
+        ttk.Label(details_frame, text="Select User:").grid(row=0, column=0, padx=(10, 5), pady=8, sticky="w")
+        self.user_combobox = ttk.Combobox(details_frame, state="readonly")
+        self.user_combobox.grid(row=0, column=1, columnspan=2, padx=(0, 10), pady=8, sticky="ew")
         self.update_user_list()
 
-        # Upload type
         self.upload_type = tk.StringVar(value="local")
-        local_radio = ttk.Radiobutton(upload_tab, text="Local File", variable=self.upload_type, value="local", command=self.toggle_upload_source)
-        local_radio.grid(row=1, column=0, padx=10, pady=10, sticky="w")
-        youtube_radio = ttk.Radiobutton(upload_tab, text="YouTube URL", variable=self.upload_type, value="youtube", command=self.toggle_upload_source)
-        youtube_radio.grid(row=1, column=1, padx=10, pady=10, sticky="w")
+        upload_type_frame = ttk.Frame(details_frame)
+        upload_type_frame.grid(row=1, column=0, columnspan=3, padx=10, pady=(0, 5), sticky="w")
+        ttk.Radiobutton(upload_type_frame, text="Local File", variable=self.upload_type, value="local", command=self.toggle_upload_source).pack(side="left", padx=(0, 10))
+        ttk.Radiobutton(upload_type_frame, text="YouTube URL", variable=self.upload_type, value="youtube", command=self.toggle_upload_source).pack(side="left")
 
-        # File path / URL
-        self.source_label = ttk.Label(upload_tab, text="Video Path:")
-        self.source_label.grid(row=2, column=0, padx=10, pady=10, sticky="w")
-        self.source_entry = ttk.Entry(upload_tab)
-        self.source_entry.grid(row=2, column=1, padx=10, pady=10, sticky="ew")
-        self.browse_button = ttk.Button(upload_tab, text="Browse...", command=self.browse_local_video)
-        self.browse_button.grid(row=2, column=2, padx=10, pady=10, sticky="w")
+        self.source_label = ttk.Label(details_frame, text="Video Path:")
+        self.source_label.grid(row=2, column=0, padx=(10, 5), pady=8, sticky="w")
+        self.source_entry = ttk.Entry(details_frame)
+        self.source_entry.grid(row=2, column=1, padx=(0, 5), pady=8, sticky="ew")
+        self.browse_button = ttk.Button(details_frame, text="Browse...", command=self.browse_local_video, width=10)
+        self.browse_button.grid(row=2, column=2, padx=(0, 10), pady=8, sticky="e")
 
-        # Caption
-        caption_label = ttk.Label(upload_tab, text="Caption:")
-        caption_label.grid(row=3, column=0, padx=10, pady=10, sticky="nw")
-        self.caption_text = tk.Text(upload_tab, height=6, wrap="word")
-        self.caption_text.grid(row=3, column=1, padx=10, pady=10, sticky="nsew")
-        self.caption_scrollbar = ttk.Scrollbar(upload_tab, orient="vertical", command=self.caption_text.yview)
-        self.caption_scrollbar.grid(row=3, column=2, padx=(0, 10), pady=10, sticky="ns")
+        # Caption section
+        caption_frame = ttk.LabelFrame(left_column, text="Caption")
+        caption_frame.grid(row=1, column=0, padx=5, pady=(0, 5), sticky="nsew")
+        caption_frame.columnconfigure(0, weight=1)
+        caption_frame.rowconfigure(0, weight=1)
+
+        self.caption_text = tk.Text(caption_frame, height=6, wrap="word")
+        self.caption_text.grid(row=0, column=0, padx=(10, 0), pady=10, sticky="nsew")
+        self.caption_scrollbar = ttk.Scrollbar(caption_frame, orient="vertical", command=self.caption_text.yview)
+        self.caption_scrollbar.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="ns")
         self.caption_text.configure(yscrollcommand=self.caption_scrollbar.set)
 
+        caption_actions = ttk.Frame(caption_frame)
+        caption_actions.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="ew")
+        caption_actions.columnconfigure(0, weight=1)
         self.caption_status_var = tk.StringVar(value="")
-        self.generate_caption_button = ttk.Button(
-            upload_tab,
-            text="Generate Caption with Gemini",
-            command=self.generate_caption_with_gemini,
-        )
-        self.generate_caption_button.grid(row=4, column=1, padx=10, pady=(0, 5), sticky="e")
-        self.caption_status_label = tk.Label(
-            upload_tab,
-            textvariable=self.caption_status_var,
-            fg="green",
-            bg=self.cget("background"),
-        )
-        self.caption_status_label.grid(row=4, column=0, padx=10, pady=(0, 5), sticky="w")
+        self.caption_status_label = ttk.Label(caption_actions, textvariable=self.caption_status_var)
+        self.caption_status_label.grid(row=0, column=0, sticky="w")
+        self.generate_caption_button = ttk.Button(caption_actions, text="Generate Caption with Gemini", command=self.generate_caption_with_gemini)
+        self.generate_caption_button.grid(row=0, column=1, sticky="e")
 
-        # AI label toggle
+        # Metadata toggles
+        meta_frame = ttk.LabelFrame(right_column, text="Metadata & Permissions")
+        meta_frame.grid(row=0, column=0, padx=5, pady=(0, 5), sticky="ew")
+        meta_frame.columnconfigure(1, weight=1)
+
         self.ai_generated_var = tk.BooleanVar(value=False)
-        self.ai_checkbox = ttk.Checkbutton(upload_tab, text="Mark as AI-generated", variable=self.ai_generated_var)
-        self.ai_checkbox.grid(row=5, column=1, padx=10, pady=(0, 5), sticky="w")
+        ttk.Checkbutton(meta_frame, text="Mark as AI-generated", variable=self.ai_generated_var).grid(row=0, column=0, columnspan=2, padx=10, pady=(8, 2), sticky="w")
+
+        permissions_frame = ttk.Frame(meta_frame)
+        permissions_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 5), sticky="w")
+        self.allow_comment_var = tk.BooleanVar(value=True)
+        self.allow_duet_var = tk.BooleanVar(value=False)
+        self.allow_stitch_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(permissions_frame, text="Allow Comments", variable=self.allow_comment_var).pack(side="left", padx=(0, 8))
+        ttk.Checkbutton(permissions_frame, text="Allow Duet", variable=self.allow_duet_var).pack(side="left", padx=(0, 8))
+        ttk.Checkbutton(permissions_frame, text="Allow Stitch", variable=self.allow_stitch_var).pack(side="left")
+
+        ttk.Label(meta_frame, text="Visibility:").grid(row=2, column=0, padx=(10, 5), pady=(0, 8), sticky="w")
+        self.visibility_combobox = ttk.Combobox(meta_frame, state="readonly", values=list(self.visibility_options.keys()))
+        self.visibility_combobox.grid(row=2, column=1, padx=(0, 10), pady=(0, 8), sticky="ew")
+        self.visibility_combobox.current(0)
+
+        brand_frame = ttk.Frame(meta_frame)
+        brand_frame.grid(row=3, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="w")
+        self.brand_organic_var = tk.BooleanVar(value=False)
+        self.branded_content_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(brand_frame, text="Brand Organic", variable=self.brand_organic_var).pack(side="left", padx=(0, 8))
+        ttk.Checkbutton(brand_frame, text="Branded Content", variable=self.branded_content_var).pack(side="left")
 
         # Schedule time
-        schedule_frame = ttk.LabelFrame(upload_tab, text="Schedule (US Eastern)")
-        schedule_frame.grid(row=6, column=1, padx=10, pady=(0, 5), sticky="ew")
+        schedule_frame = ttk.LabelFrame(right_column, text="Schedule (US Eastern)")
+        schedule_frame.grid(row=1, column=0, padx=5, pady=(0, 5), sticky="ew")
         schedule_frame.columnconfigure(1, weight=1)
         schedule_frame.columnconfigure(3, weight=1)
 
@@ -150,64 +193,39 @@ class TiktokUploaderGUI(tk.Tk):
         )
         schedule_hint.grid(row=3, column=0, columnspan=4, sticky="w")
 
-        # Interaction permissions
-        permissions_frame = ttk.Frame(upload_tab)
-        permissions_frame.grid(row=7, column=1, padx=10, pady=(0, 5), sticky="w")
-        self.allow_comment_var = tk.BooleanVar(value=True)
-        self.allow_duet_var = tk.BooleanVar(value=False)
-        self.allow_stitch_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(permissions_frame, text="Allow Comments", variable=self.allow_comment_var).grid(row=0, column=0, padx=(0, 10), sticky="w")
-        ttk.Checkbutton(permissions_frame, text="Allow Duet", variable=self.allow_duet_var).grid(row=0, column=1, padx=(0, 10), sticky="w")
-        ttk.Checkbutton(permissions_frame, text="Allow Stitch", variable=self.allow_stitch_var).grid(row=0, column=2, sticky="w")
+        # Network / advanced options
+        advanced_frame = ttk.LabelFrame(right_column, text="Advanced Options")
+        advanced_frame.grid(row=2, column=0, padx=5, pady=(0, 5), sticky="ew")
+        advanced_frame.columnconfigure(1, weight=1)
 
-        # Visibility
-        visibility_frame = ttk.Frame(upload_tab)
-        visibility_frame.grid(row=8, column=1, padx=10, pady=(0, 5), sticky="ew")
-        ttk.Label(visibility_frame, text="Visibility:").grid(row=0, column=0, sticky="w")
-        self.visibility_combobox = ttk.Combobox(visibility_frame, state="readonly", values=list(self.visibility_options.keys()))
-        self.visibility_combobox.grid(row=0, column=1, padx=(8, 0), sticky="ew")
-        self.visibility_combobox.current(0)
+        ttk.Label(advanced_frame, text="Proxy (optional):").grid(row=0, column=0, padx=(10, 5), pady=8, sticky="w")
+        self.proxy_entry = ttk.Entry(advanced_frame)
+        self.proxy_entry.grid(row=0, column=1, padx=(0, 10), pady=8, sticky="ew")
 
-        # Brand settings
-        brand_frame = ttk.Frame(upload_tab)
-        brand_frame.grid(row=9, column=1, padx=10, pady=(0, 5), sticky="w")
-        self.brand_organic_var = tk.BooleanVar(value=False)
-        self.branded_content_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(brand_frame, text="Brand Organic", variable=self.brand_organic_var).grid(row=0, column=0, padx=(0, 10), sticky="w")
-        ttk.Checkbutton(brand_frame, text="Branded Content", variable=self.branded_content_var).grid(row=0, column=1, sticky="w")
-
-        # Proxy
-        proxy_frame = ttk.Frame(upload_tab)
-        proxy_frame.grid(row=10, column=1, padx=10, pady=(0, 5), sticky="ew")
-        proxy_frame.columnconfigure(1, weight=1)
-        ttk.Label(proxy_frame, text="Proxy (optional):").grid(row=0, column=0, sticky="w")
-        self.proxy_entry = ttk.Entry(proxy_frame)
-        self.proxy_entry.grid(row=0, column=1, padx=(8, 0), sticky="ew")
-
-        # Datacenter override
-        datacenter_frame = ttk.Frame(upload_tab)
-        datacenter_frame.grid(row=11, column=1, padx=10, pady=(0, 5), sticky="ew")
-        datacenter_frame.columnconfigure(1, weight=1)
-        ttk.Label(datacenter_frame, text="Datacenter (optional):").grid(row=0, column=0, sticky="w")
+        ttk.Label(advanced_frame, text="Datacenter (optional):").grid(row=1, column=0, padx=(10, 5), pady=(0, 10), sticky="w")
         self.datacenter_var = tk.StringVar(value=self.datacenter_options[0])
         self.datacenter_combobox = ttk.Combobox(
-            datacenter_frame,
+            advanced_frame,
             textvariable=self.datacenter_var,
             values=self.datacenter_options,
             state="readonly",
         )
-        self.datacenter_combobox.grid(row=0, column=1, padx=(8, 0), sticky="ew")
+        self.datacenter_combobox.grid(row=1, column=1, padx=(0, 10), pady=(0, 10), sticky="ew")
 
         # Upload button
-        self.upload_button = ttk.Button(upload_tab, text="Upload", command=self.upload_video)
-        self.upload_button.grid(row=12, column=1, padx=10, pady=10, sticky="e")
+        action_frame = ttk.Frame(right_column)
+        action_frame.grid(row=3, column=0, padx=5, pady=(5, 5), sticky="e")
+        self.upload_button = ttk.Button(action_frame, text="Upload", command=self.upload_video, width=18)
+        self.upload_button.pack(padx=5, pady=(5, 0))
 
-        self._build_status_section(upload_tab)
+        self._build_status_section(status_container)
 
     def _build_status_section(self, parent):
-        parent.rowconfigure(13, weight=1)
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+
         status_frame = ttk.LabelFrame(parent, text="Status")
-        status_frame.grid(row=13, column=0, columnspan=3, padx=10, pady=(0, 10), sticky="nsew")
+        status_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
         status_frame.columnconfigure(0, weight=1)
         status_frame.rowconfigure(1, weight=1)
 
