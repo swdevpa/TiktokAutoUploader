@@ -3,7 +3,27 @@ from .Config import Config
 from moviepy.editor import *
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pytube import YouTube
-import time, os
+from pytube.innertube import InnerTube
+from pytube.exceptions import RegexMatchError
+import time, os, ssl, urllib.request
+from urllib.error import HTTPError, URLError
+
+try:
+    from yt_dlp import YoutubeDL
+except ImportError:
+    YoutubeDL = None
+
+try:
+    import certifi
+except ImportError:
+    certifi = None
+
+# Ensure urllib (used by pytube) uses a CA bundle that includes modern roots when available.
+if certifi:
+    _ssl_context = ssl.create_default_context(cafile=certifi.where())
+    urllib.request.install_opener(
+        urllib.request.build_opener(urllib.request.HTTPSHandler(context=_ssl_context))
+    )
 
 class Video:
     def __init__(self, source_ref, video_text):
@@ -56,51 +76,112 @@ class Video:
         if not self.source_ref.endswith('.mp4') and not self.source_ref.endswith('.webm'):
             exit(f"File: {self.source_ref} has wrong file extension. Must be .mp4 or .webm.")
 
+    def _build_youtube_client(self, url):
+        yt = YouTube(url)
+        if yt._vid_info:
+            return yt
+
+        clients = ('WEB', 'ANDROID', 'ANDROID_MUSIC')
+        last_err = None
+        for client in clients:
+            try:
+                yt._vid_info = InnerTube(
+                    client=client,
+                    use_oauth=yt.use_oauth,
+                    allow_cache=yt.allow_oauth_cache
+                ).player(yt.video_id)
+                break
+            except HTTPError as err:
+                last_err = err
+        else:
+            if last_err:
+                raise last_err
+        return yt
+
     def get_youtube_video(self, max_res=True):
         url = self.source_ref
-        streams = YouTube(url).streams.filter(progressive=True)
-        valid_streams = sorted(streams, reverse=True, key=lambda x: x.resolution is not None)
-        filtered_streams = sorted(valid_streams, reverse=True, key=lambda x: int(x.resolution.split("p")[0]))
-        if filtered_streams:
-            selected_stream = filtered_streams[0]
-            print("Starting Download for Video...")
-            selected_stream.download(output_path=os.path.join(os.getcwd(), Config.get().videos_dir), filename="pre-processed.mp4")
-            filename = os.path.join(os.getcwd(), Config.get().videos_dir, "pre-processed"+".mp4")
-            return filename
+        try:
+            yt = self._build_youtube_client(url)
 
+            streams = yt.streams.filter(progressive=True)
+            valid_streams = sorted(streams, reverse=True, key=lambda x: x.resolution is not None)
+            filtered_streams = sorted(valid_streams, reverse=True, key=lambda x: int(x.resolution.split("p")[0]))
+            if filtered_streams:
+                selected_stream = filtered_streams[0]
+                print("Starting Download for Video...")
+                selected_stream.download(output_path=os.path.join(os.getcwd(), Config.get().videos_dir), filename="pre-processed.mp4")
+                filename = os.path.join(os.getcwd(), Config.get().videos_dir, "pre-processed"+".mp4")
+                return filename
 
-        video = YouTube(url).streams.filter(file_extension="mp4", adaptive=True).first()
-        audio = YouTube(url).streams.filter(file_extension="webm", only_audio=True, adaptive=True).first()
-        if video and audio:
-            random_filename = str(int(time.time()))  # extension is added automatically.
-            video_path = os.path.join(os.getcwd(), Config.get().videos_dir, "pre-processed.mp4")
-            resolution = int(video.resolution[:-1])
-            # print(resolution)
-            if resolution >= 360:
-                downloaded_v_path = video.download(output_path=os.path.join(os.getcwd(), self.config.videos_dir), filename=random_filename)
-                print("Downloaded Video File @ " + video.resolution)
-                downloaded_a_path = audio.download(output_path=os.path.join(os.getcwd(), self.config.videos_dir), filename="a" + random_filename)
-                print("Downloaded Audio File")
-                file_check_iter = 0
-                while not os.path.exists(downloaded_a_path) and os.path.exists(downloaded_v_path):
-                    time.sleep(2**file_check_iter)
-                    file_check_iter = +1
-                    if file_check_iter > 3:
-                        print("Error saving these files to directory, please try again")
-                        return
-                    print("Waiting for files to appear.")
+            video = yt.streams.filter(file_extension="mp4", adaptive=True).first()
+            audio = yt.streams.filter(file_extension="webm", only_audio=True, adaptive=True).first()
+            if video and audio:
+                random_filename = str(int(time.time()))  # extension is added automatically.
+                video_path = os.path.join(os.getcwd(), Config.get().videos_dir, "pre-processed.mp4")
+                resolution = int(video.resolution[:-1])
+                # print(resolution)
+                if resolution >= 360:
+                    downloaded_v_path = video.download(output_path=os.path.join(os.getcwd(), self.config.videos_dir), filename=random_filename)
+                    print("Downloaded Video File @ " + video.resolution)
+                    downloaded_a_path = audio.download(output_path=os.path.join(os.getcwd(), self.config.videos_dir), filename="a" + random_filename)
+                    print("Downloaded Audio File")
+                    file_check_iter = 0
+                    while not os.path.exists(downloaded_a_path) and os.path.exists(downloaded_v_path):
+                        time.sleep(2**file_check_iter)
+                        file_check_iter = +1
+                        if file_check_iter > 3:
+                            print("Error saving these files to directory, please try again")
+                            return
+                        print("Waiting for files to appear.")
 
-                composite_video = VideoFileClip(downloaded_v_path).set_audio(AudioFileClip(downloaded_a_path))
-                composite_video.write_videofile(video_path)
-                # Deleting raw video and audio files.
-                # os.remove(downloaded_a_path)
-                # os.remove(downloaded_v_path)
-                return video_path
-            else:
-                print("All videos have are too low of quality.")
-                return
-        print("No videos available with both audio and video available...")
-        return False
+                    composite_video = VideoFileClip(downloaded_v_path).set_audio(AudioFileClip(downloaded_a_path))
+                    composite_video.write_videofile(video_path)
+                    # Deleting raw video and audio files.
+                    # os.remove(downloaded_a_path)
+                    # os.remove(downloaded_v_path)
+                    return video_path
+                else:
+                    print("All videos have are too low of quality.")
+                    return
+            print("No videos available with both audio and video available...")
+        except (HTTPError, URLError, RegexMatchError) as err:
+            print(f"pytube failed to download video ({err}). Attempting yt-dlp fallback.")
+        except Exception as err:
+            print(f"Unexpected pytube error: {err}")
+            print("Attempting yt-dlp fallback.")
+        return self._download_with_yt_dlp(url)
+
+    def _download_with_yt_dlp(self, url):
+        if not YoutubeDL:
+            raise RuntimeError(
+                "yt-dlp is not installed. Please install it to download YouTube videos."
+            )
+
+        target_dir = os.path.join(os.getcwd(), self.config.videos_dir)
+        os.makedirs(target_dir, exist_ok=True)
+        output_template = os.path.join(target_dir, "pre-processed.%(ext)s")
+
+        ydl_opts = {
+            "format": "bv*[ext=mp4][height<=1080]+ba[ext=m4a]/b[ext=mp4]/b",
+            "merge_output_format": "mp4",
+            "outtmpl": output_template,
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+        }
+
+        final_path = os.path.join(target_dir, "pre-processed.mp4")
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            downloaded_path = ydl.prepare_filename(info)
+
+        if downloaded_path != final_path and os.path.exists(downloaded_path):
+            os.replace(downloaded_path, final_path)
+
+        if not os.path.exists(final_path):
+            raise FileNotFoundError("yt-dlp did not produce the expected output file.")
+
+        return final_path
 
     _YT_DOMAINS = [
         "http://youtu.be/", "https://youtu.be/", "http://youtube.com/", "https://youtube.com/",

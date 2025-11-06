@@ -46,3 +46,4 @@ urllib3
 websockets
 wsproto
 zipp==3.17.0
+yt-dlp>=2024.5.27
