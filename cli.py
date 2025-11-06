@@ -29,6 +29,7 @@ if __name__ == "__main__":
     upload_parser.add_argument("-bc", "--brandcontent", type=int, default=0)
     upload_parser.add_argument("-ai", "--ailabel", type=int, default=0)
     upload_parser.add_argument("-p", "--proxy", default="")
+    upload_parser.add_argument("-dc", "--datacenter", default="", help="Override TikTok datacenter (e.g., useast5)")
 
     # Show cookies
     show_parser = subparsers.add_parser("show", help="Show users and videos available for system.")
@@ -74,7 +75,21 @@ if __name__ == "__main__":
                 sys.exit(1)
 
         try:
-            tiktok.upload_video(args.users, args.video,  args.title, args.schedule, args.comment, args.duet, args.stitch, args.visibility, args.brandorganic, args.brandcontent, args.ailabel, args.proxy)
+            tiktok.upload_video(
+                args.users,
+                args.video,
+                args.title,
+                args.schedule,
+                args.comment,
+                args.duet,
+                args.stitch,
+                args.visibility,
+                args.brandorganic,
+                args.brandcontent,
+                args.ailabel,
+                args.proxy or None,
+                args.datacenter or None,
+            )
         except RuntimeError as exc:
             eprint(str(exc))
             sys.exit(1)

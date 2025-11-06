@@ -15,6 +15,15 @@ class TiktokUploaderGUI(tk.Tk):
 
         self.video_dir = os.path.join(os.getcwd(), "VideosDirPath")
         self.visibility_options = {"Public": 0, "Private": 1}
+        self.datacenter_options = [
+            "Automatic",
+            "useast2a",
+            "useast5",
+            "uswest2",
+            "eu-ttp2",
+            "euw1",
+            "asia-singapore-1",
+        ]
 
         self.create_upload_tab()
         self.create_users_tab()
@@ -106,9 +115,23 @@ class TiktokUploaderGUI(tk.Tk):
         self.proxy_entry = ttk.Entry(proxy_frame)
         self.proxy_entry.grid(row=0, column=1, padx=(8, 0), sticky="ew")
 
+        # Datacenter override
+        datacenter_frame = ttk.Frame(upload_tab)
+        datacenter_frame.grid(row=10, column=1, padx=10, pady=(0, 5), sticky="ew")
+        datacenter_frame.columnconfigure(1, weight=1)
+        ttk.Label(datacenter_frame, text="Datacenter (optional):").grid(row=0, column=0, sticky="w")
+        self.datacenter_var = tk.StringVar(value=self.datacenter_options[0])
+        self.datacenter_combobox = ttk.Combobox(
+            datacenter_frame,
+            textvariable=self.datacenter_var,
+            values=self.datacenter_options,
+            state="readonly",
+        )
+        self.datacenter_combobox.grid(row=0, column=1, padx=(8, 0), sticky="ew")
+
         # Upload button
         upload_button = ttk.Button(upload_tab, text="Upload", command=self.upload_video)
-        upload_button.grid(row=10, column=1, padx=10, pady=10, sticky="e")
+        upload_button.grid(row=11, column=1, padx=10, pady=10, sticky="e")
 
     def create_users_tab(self):
         users_tab = ttk.Frame(self.notebook)
@@ -234,6 +257,8 @@ class TiktokUploaderGUI(tk.Tk):
         brand_organic_type = 1 if self.brand_organic_var.get() else 0
         branded_content_type = 1 if self.branded_content_var.get() else 0
         proxy = self.proxy_entry.get().strip()
+        datacenter_selection = self.datacenter_var.get().strip()
+        datacenter = None if datacenter_selection == "Automatic" else datacenter_selection or None
 
         if not user or not source or not caption:
             messagebox.showerror("Missing information", "Please select a user, choose a video, and enter a caption.")
@@ -272,6 +297,7 @@ class TiktokUploaderGUI(tk.Tk):
                     branded_content_type=branded_content_type,
                     ai_label=ai_label,
                     proxy=proxy or None,
+                    datacenter=datacenter,
                 )
             else:
                 from tiktok_uploader.Video import Video
@@ -291,6 +317,7 @@ class TiktokUploaderGUI(tk.Tk):
                     branded_content_type=branded_content_type,
                     ai_label=ai_label,
                     proxy=proxy or None,
+                    datacenter=datacenter,
                 )
         except RuntimeError as err:
             messagebox.showerror("Upload failed", str(err))
