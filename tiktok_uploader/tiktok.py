@@ -50,12 +50,21 @@ def login(login_name: str):
 
 
 # Local Code...
-def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, allow_duet=0, allow_stitch=0, visibility_type=0, brand_organic_type=0, branded_content_type=0, ai_label=0, proxy=None, datacenter=None):
+def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, allow_duet=0, allow_stitch=0, visibility_type=0, brand_organic_type=0, branded_content_type=0, ai_label=0, proxy=None, datacenter=None, status_callback=None):
+	def _report_status(message):
+		if status_callback:
+			try:
+				status_callback(message)
+			except Exception:
+				pass
+		else:
+			print(message)
+
 	try:
 		user_agent = UserAgent().random
 	except FakeUserAgentError as e:
 		user_agent = _UA
-		print("[-] Could not get random user agent, using default")
+		_report_status("[-] Could not get random user agent, using default")
 
 	cookies = load_cookies_from_file(f"tiktok_session-{session_user}")
 	session_id = next((c["value"] for c in cookies if c["name"] == 'sessionid'), None)
@@ -65,25 +74,25 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 	if not session_id:
 		raise RuntimeError("No cookie with Tiktok session id found: use login to save session id")
 	if not dc_id:
-		print("[WARNING]: Please login, tiktok datacenter id must be allocated, or may fail")
+		_report_status("[WARNING]: Please login, tiktok datacenter id must be allocated, or may fail")
 		dc_id = "useast2a"
 	elif datacenter and datacenter != dc_from_cookie:
-		print(f"[INFO]: Overriding stored datacenter '{dc_from_cookie}' with user preference '{datacenter}'")
+		_report_status(f"[INFO]: Overriding stored datacenter '{dc_from_cookie}' with user preference '{datacenter}'")
 	elif datacenter:
-		print(f"[INFO]: Using user-specified datacenter '{datacenter}'")
-	print("User successfully logged in.")
-	print(f"Tiktok Datacenter Assigned: {dc_id}")
+		_report_status(f"[INFO]: Using user-specified datacenter '{datacenter}'")
+	_report_status("User successfully logged in.")
+	_report_status(f"Tiktok Datacenter Assigned: {dc_id}")
 	
-	print("Uploading video...")
+	_report_status("Uploading video...")
 	# Parameter validation,
 	if schedule_time and (schedule_time > 864000 or schedule_time < 900):
-		print("[-] Cannot schedule video in more than 10 days or less than 20 minutes")
+		_report_status("[-] Cannot schedule video in more than 10 days or less than 20 minutes")
 		return False
 	if len(title) > 2200:
-		print("[-] The title has to be less than 2200 characters")
+		_report_status("[-] The title has to be less than 2200 characters")
 		return False
 	if schedule_time != 0 and visibility_type == 1:
-		print("[-] Private videos cannot be uploaded with schedule")
+		_report_status("[-] Private videos cannot be uploaded with schedule")
 		return False
 
 	# Check video length - 1 minute max, takes too long to run this.
@@ -121,6 +130,7 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 		r = session.post(project_url)
 
 		if not assert_success(project_url, r):
+			_report_status(f"[-] TikTok project creation failed with HTTP {r.status_code}")
 			return False
 
 		try:
@@ -167,10 +177,12 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 		if proxy:
 			r = requests.post(url, headers=headers, data=data, proxies=session.proxies)
 			if not assert_success(url, r):
+				_report_status(f"[-] TikTok chunk commit failed with HTTP {r.status_code}")
 				return False
 		else:
 			r = requests.post(url, headers=headers, data=data)
 			if not assert_success(url, r):
+				_report_status(f"[-] TikTok chunk commit failed with HTTP {r.status_code}")
 				return False
 		#
 		# url = f"https://www.tiktok.com/top/v1?Action=CommitUploadInner&Version=2020-11-19&SpaceName=tiktok"
@@ -182,6 +194,7 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 
 		r = session.post(url, auth=aws_auth, data=data)
 		if not assert_success(url, r):
+			_report_status(f"[-] TikTok ApplyUploadInner failed with HTTP {r.status_code}")
 			return False
 
 		# publish video
@@ -192,6 +205,7 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 
 		r = session.head(url, headers=headers)
 		if not assert_success(url, r):
+			_report_status(f"[-] TikTok preflight request failed with HTTP {r.status_code}")
 			return False
 
 		headers = {
@@ -346,13 +360,13 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 			sig_url = f"https://www.tiktok.com/api/v1/web/project/post/?app_name=tiktok_web&channel=tiktok_web&device_platform=web&aid=1988&msToken={mstoken}"
 			signatures = subprocess_jsvmp(js_path, user_agent, sig_url)
 			if signatures is None:
-				print("[-] Failed to generate signatures")
+				_report_status("[-] Failed to generate upload signatures.")
 				return False
 
 			try:
 				tt_output = json.loads(signatures)["data"]
 			except (json.JSONDecodeError, KeyError) as e:
-				print(f"[-] Failed to parse signature data: {str(e)}")
+				_report_status(f"[-] Failed to parse signature data: {str(e)}")
 				return False
 
 			project_post_dict = {
@@ -370,16 +384,19 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 			url = f"https://www.tiktok.com/tiktok/web/project/post/v1/"
 			r = session.request("POST", url, params=project_post_dict, data=json.dumps(data), headers=headers)
 			if not assertSuccess(url, r):
-				print("[-] Published failed, try later again")
+				_report_status("[-] Publish request rejected by TikTok.")
 				printError(url, r)
 				return False
 
 			if r.json()["status_code"] == 0:
-				print(f"Published successfully {'| Scheduled for ' + str(schedule_time) if schedule_time else ''}")
+				msg = "Published successfully"
+				if schedule_time:
+					msg += f" | Scheduled for {schedule_time} seconds from now"
+				_report_status(msg)
 				uploaded = True
 				break
 			else:
-				print("[-] Publish failed to Tiktok, trying again...")
+				_report_status("[-] Publish failed to TikTok.")
 				printError(url, r)
 				return False
 			#
@@ -394,7 +411,7 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 			# 	print("[-] Waiting for TikTok to process video...")
 			# 	time.sleep(1.5)  # wait 1.5 seconds before asking again.
 		if not uploaded:
-			print("[-] Could not upload video")
+			_report_status("[-] Could not upload video")
 			return False
 		return True
 	finally:

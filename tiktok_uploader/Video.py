@@ -25,10 +25,11 @@ if certifi:
     )
 
 class Video:
-    def __init__(self, source_ref, video_text):
+    def __init__(self, source_ref, video_text, status_callback=None):
         self.config = Config.get()
         self.source_ref = source_ref
         self.video_text = video_text
+        self._status_callback = status_callback
 
         self.source_ref = self.downloadIfYoutubeURL()
         # Wait until self.source_ref is found in the file system.
@@ -57,9 +58,9 @@ class Video:
                 meme_overlay = TextClip(txt=self.video_text, bg_color=self.config.imagemagick_text_background_color, color=self.config.imagemagick_text_foreground_color, size=(900, None), kerning=-1,
                             method="caption", font=self.config.imagemagick_font, fontsize=self.config.imagemagick_font_size, align="center")
             except OSError as e:
-                print("Please make sure that you have ImageMagick is not installed on your computer, or (for Windows users) that you didn't specify the path to the ImageMagick binary in file conf.py, or that the path you specified is incorrect")
-                print("https://imagemagick.org/script/download.php#windows")
-                print(e)
+                self._report_status("Please make sure that you have ImageMagick is not installed on your computer, or (for Windows users) that you didn't specify the path to the ImageMagick binary in file conf.py, or that the path you specified is incorrect")
+                self._report_status("https://imagemagick.org/script/download.php#windows")
+                self._report_status(str(e))
                 exit()
             meme_overlay = meme_overlay.set_duration(self.clip.duration)
             self.clip = CompositeVideoClip([base_clip, self.clip.set_position(("center", "center")),
@@ -107,7 +108,7 @@ class Video:
             filtered_streams = sorted(valid_streams, reverse=True, key=lambda x: int(x.resolution.split("p")[0]))
             if filtered_streams:
                 selected_stream = filtered_streams[0]
-                print("Starting Download for Video...")
+                self._report_status("Starting download for YouTube video (progressive stream).")
                 selected_stream.download(output_path=os.path.join(os.getcwd(), Config.get().videos_dir), filename="pre-processed.mp4")
                 filename = os.path.join(os.getcwd(), Config.get().videos_dir, "pre-processed"+".mp4")
                 return filename
@@ -121,17 +122,17 @@ class Video:
                 # print(resolution)
                 if resolution >= 360:
                     downloaded_v_path = video.download(output_path=os.path.join(os.getcwd(), self.config.videos_dir), filename=random_filename)
-                    print("Downloaded Video File @ " + video.resolution)
+                    self._report_status(f"Downloaded video file @ {video.resolution}.")
                     downloaded_a_path = audio.download(output_path=os.path.join(os.getcwd(), self.config.videos_dir), filename="a" + random_filename)
-                    print("Downloaded Audio File")
+                    self._report_status("Downloaded audio track.")
                     file_check_iter = 0
                     while not os.path.exists(downloaded_a_path) and os.path.exists(downloaded_v_path):
                         time.sleep(2**file_check_iter)
                         file_check_iter = +1
                         if file_check_iter > 3:
-                            print("Error saving these files to directory, please try again")
+                            self._report_status("Error saving these files to directory, please try again")
                             return
-                        print("Waiting for files to appear.")
+                        self._report_status("Waiting for downloaded files to appear...")
 
                     composite_video = VideoFileClip(downloaded_v_path).set_audio(AudioFileClip(downloaded_a_path))
                     composite_video.write_videofile(video_path)
@@ -140,14 +141,14 @@ class Video:
                     # os.remove(downloaded_v_path)
                     return video_path
                 else:
-                    print("All videos have are too low of quality.")
+                    self._report_status("All available YouTube video streams are below 360p; aborting download.")
                     return
-            print("No videos available with both audio and video available...")
+            self._report_status("No suitable YouTube video streams with audio found.")
         except (HTTPError, URLError, RegexMatchError) as err:
-            print(f"pytube failed to download video ({err}). Attempting yt-dlp fallback.")
+            self._report_status(f"pytube failed to download video ({err}). Attempting yt-dlp fallback.")
         except Exception as err:
-            print(f"Unexpected pytube error: {err}")
-            print("Attempting yt-dlp fallback.")
+            self._report_status(f"Unexpected pytube error: {err}")
+            self._report_status("Attempting yt-dlp fallback.")
         return self._download_with_yt_dlp(url)
 
     def _download_with_yt_dlp(self, url):
@@ -160,6 +161,7 @@ class Video:
         os.makedirs(target_dir, exist_ok=True)
         output_template = os.path.join(target_dir, "pre-processed.%(ext)s")
 
+        self._report_status("Using yt-dlp fallback for YouTube download.")
         ydl_opts = {
             "format": "bv*[ext=mp4][height<=1080]+ba[ext=m4a]/b[ext=mp4]/b",
             "merge_output_format": "mp4",
@@ -189,7 +191,16 @@ class Video:
     
     def downloadIfYoutubeURL(self):
             if any(ext in self.source_ref for ext in Video._YT_DOMAINS):
-                print("Detected Youtube Video...")
+                self._report_status("Detected YouTube video URL; starting download.")
                 video_dir = self.get_youtube_video()
                 return video_dir
             return self.source_ref
+
+    def _report_status(self, message):
+        if self._status_callback:
+            try:
+                self._status_callback(message)
+            except Exception:
+                pass
+        else:
+            print(message)

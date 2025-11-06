@@ -4,8 +4,10 @@ import threading
 import tkinter as tk
 from typing import Optional
 from tkinter import filedialog, messagebox, ttk
+from datetime import datetime
 
 from tiktok_uploader import tiktok
+from tiktok_uploader.Video import Video
 from tiktok_uploader.gemini_caption import GeminiCaptionError, GeminiCaptionService
 
 class TiktokUploaderGUI(tk.Tk):
@@ -33,6 +35,8 @@ class TiktokUploaderGUI(tk.Tk):
             os.path.join(os.getcwd(), "TikTok Algo Guide.pdf"),
         ]
         self._caption_thread: Optional[threading.Thread] = None
+        self._upload_thread: Optional[threading.Thread] = None
+        self._active_tasks = 0
 
         self.create_upload_tab()
         self.create_users_tab()
@@ -154,8 +158,34 @@ class TiktokUploaderGUI(tk.Tk):
         self.datacenter_combobox.grid(row=0, column=1, padx=(8, 0), sticky="ew")
 
         # Upload button
-        upload_button = ttk.Button(upload_tab, text="Upload", command=self.upload_video)
-        upload_button.grid(row=12, column=1, padx=10, pady=10, sticky="e")
+        self.upload_button = ttk.Button(upload_tab, text="Upload", command=self.upload_video)
+        self.upload_button.grid(row=12, column=1, padx=10, pady=10, sticky="e")
+
+        self._build_status_section(upload_tab)
+
+    def _build_status_section(self, parent):
+        parent.rowconfigure(13, weight=1)
+        status_frame = ttk.LabelFrame(parent, text="Status")
+        status_frame.grid(row=13, column=0, columnspan=3, padx=10, pady=(0, 10), sticky="nsew")
+        status_frame.columnconfigure(0, weight=1)
+        status_frame.rowconfigure(1, weight=1)
+
+        header = ttk.Frame(status_frame)
+        header.grid(row=0, column=0, padx=10, pady=(10, 5), sticky="ew")
+        header.columnconfigure(1, weight=1)
+
+        self.status_message_var = tk.StringVar(value="Bereit.")
+        ttk.Label(header, textvariable=self.status_message_var).grid(row=0, column=0, sticky="w")
+
+        self.status_progress = ttk.Progressbar(header, mode="indeterminate")
+        self.status_progress.grid(row=0, column=1, sticky="ew", padx=(10, 0))
+
+        self.status_text = tk.Text(status_frame, height=8, wrap="word", state="disabled")
+        self.status_text.grid(row=1, column=0, padx=(10, 0), pady=(0, 10), sticky="nsew")
+
+        self.status_scrollbar = ttk.Scrollbar(status_frame, orient="vertical", command=self.status_text.yview)
+        self.status_scrollbar.grid(row=1, column=1, padx=(0, 10), pady=(0, 10), sticky="ns")
+        self.status_text.configure(yscrollcommand=self.status_scrollbar.set)
 
     def create_users_tab(self):
         users_tab = ttk.Frame(self.notebook)
@@ -269,8 +299,13 @@ class TiktokUploaderGUI(tk.Tk):
                 self.video_listbox.insert(tk.END, video)
 
     def upload_video(self):
+        if self._upload_thread and self._upload_thread.is_alive():
+            self._report_status("Upload läuft bereits; bitte warten.")
+            messagebox.showinfo("Upload läuft", "Es wird bereits ein Upload ausgeführt.")
+            return
+
         user = self.user_combobox.get()
-        source = self.source_entry.get()
+        source = self.source_entry.get().strip()
         caption = self.caption_text.get("1.0", tk.END).strip()
         ai_label = 1 if self.ai_generated_var.get() else 0
         allow_comment = 1 if self.allow_comment_var.get() else 0
@@ -286,6 +321,7 @@ class TiktokUploaderGUI(tk.Tk):
 
         if not user or not source or not caption:
             messagebox.showerror("Missing information", "Please select a user, choose a video, and enter a caption.")
+            self._report_status("Upload abgebrochen: fehlende Angaben.")
             return
 
         schedule_value = self.schedule_entry.get().strip()
@@ -296,56 +332,43 @@ class TiktokUploaderGUI(tk.Tk):
                     raise ValueError
             except ValueError:
                 messagebox.showerror("Invalid schedule", "Schedule time must be a non-negative integer (seconds).")
+                self._report_status("Upload abgebrochen: ungültige Planungszeit.")
                 return
         else:
             schedule_time = 0
 
-        try:
-            if self.upload_type.get() == "local":
-                video_path = source
-                if not os.path.isabs(video_path):
-                    video_path = os.path.join(self.video_dir, video_path)
-                if not os.path.exists(video_path):
-                    messagebox.showerror("Video not found", f"Video not found: {video_path}")
-                    return
-                tiktok.upload_video(
-                    user,
-                    video_path,
-                    caption,
-                    schedule_time=schedule_time,
-                    allow_comment=allow_comment,
-                    allow_duet=allow_duet,
-                    allow_stitch=allow_stitch,
-                    visibility_type=visibility_type,
-                    brand_organic_type=brand_organic_type,
-                    branded_content_type=branded_content_type,
-                    ai_label=ai_label,
-                    proxy=proxy or None,
-                    datacenter=datacenter,
-                )
-            else:
-                from tiktok_uploader.Video import Video
-                video_obj = Video(source, caption)
-                video_obj.is_valid_file_format()
-                video = video_obj.source_ref
-                tiktok.upload_video(
-                    user,
-                    video,
-                    caption,
-                    schedule_time=schedule_time,
-                    allow_comment=allow_comment,
-                    allow_duet=allow_duet,
-                    allow_stitch=allow_stitch,
-                    visibility_type=visibility_type,
-                    brand_organic_type=brand_organic_type,
-                    branded_content_type=branded_content_type,
-                    ai_label=ai_label,
-                    proxy=proxy or None,
-                    datacenter=datacenter,
-                )
-        except RuntimeError as err:
-            messagebox.showerror("Upload failed", str(err))
-            return
+        upload_type = self.upload_type.get()
+        source_reference = source
+        if upload_type == "local":
+            if not os.path.isabs(source_reference):
+                source_reference = os.path.join(self.video_dir, source_reference)
+            if not os.path.exists(source_reference):
+                messagebox.showerror("Video not found", f"Video not found: {source_reference}")
+                self._report_status(f"Upload abgebrochen: Video nicht gefunden ({source_reference}).")
+                return
+
+        job = {
+            "user": user,
+            "source": source_reference if upload_type == "local" else source,
+            "caption": caption,
+            "schedule_time": schedule_time,
+            "allow_comment": allow_comment,
+            "allow_duet": allow_duet,
+            "allow_stitch": allow_stitch,
+            "visibility_type": visibility_type,
+            "brand_organic_type": brand_organic_type,
+            "branded_content_type": branded_content_type,
+            "ai_label": ai_label,
+            "proxy": proxy or None,
+            "datacenter": datacenter,
+            "upload_type": upload_type,
+        }
+
+        self._set_upload_in_progress(True)
+        self._begin_task()
+        self._report_status("Starte Upload-Vorbereitung.")
+        self._upload_thread = threading.Thread(target=self._upload_worker, args=(job,), daemon=True)
+        self._upload_thread.start()
 
     def generate_caption_with_gemini(self):
         if self._caption_thread and self._caption_thread.is_alive():
@@ -369,6 +392,8 @@ class TiktokUploaderGUI(tk.Tk):
 
         self.generate_caption_button.state(["disabled"])
         self.caption_status_var.set("Generating caption with Gemini...")
+        self._begin_task()
+        self._report_status("Starte Gemini-Caption-Generierung.")
 
         self._caption_thread = threading.Thread(
             target=self._capture_caption_worker, args=(video_path,), daemon=True
@@ -392,11 +417,109 @@ class TiktokUploaderGUI(tk.Tk):
         self.caption_text.delete("1.0", tk.END)
         self.caption_text.insert(tk.END, suggestion.formatted)
         self.caption_status_var.set("Caption generated with Gemini 2.5 Pro.")
+        self._report_status("Caption generated with Gemini 2.5 Pro.")
+        self._end_task()
 
     def _on_caption_generation_error(self, message: str):
         self.generate_caption_button.state(["!disabled"])
         self.caption_status_var.set("")
+        self._report_status(f"Caption generation failed: {message}")
+        self._end_task()
         messagebox.showerror("Generate caption", message)
+
+    def _upload_worker(self, job):
+        try:
+            if job["upload_type"] == "youtube":
+                self._report_status("Lade YouTube-Video herunter.")
+                video_obj = Video(job["source"], job["caption"], status_callback=self._report_status)
+                try:
+                    video_obj.is_valid_file_format()
+                except SystemExit as exc:
+                    raise RuntimeError(str(exc)) from None
+                video_path = video_obj.source_ref
+                if not video_path or not os.path.exists(video_path):
+                    raise RuntimeError("YouTube-Download fehlgeschlagen; keine Videodatei gefunden.")
+                self._report_status("YouTube-Download abgeschlossen.")
+            else:
+                video_path = job["source"]
+
+            self._report_status("Starte Upload zu TikTok.")
+            success = tiktok.upload_video(
+                job["user"],
+                video_path,
+                job["caption"],
+                schedule_time=job["schedule_time"],
+                allow_comment=job["allow_comment"],
+                allow_duet=job["allow_duet"],
+                allow_stitch=job["allow_stitch"],
+                visibility_type=job["visibility_type"],
+                brand_organic_type=job["brand_organic_type"],
+                branded_content_type=job["branded_content_type"],
+                ai_label=job["ai_label"],
+                proxy=job["proxy"],
+                datacenter=job["datacenter"],
+                status_callback=self._report_status,
+            )
+        except RuntimeError as err:
+            self.after(0, lambda: self._on_upload_error(str(err)))
+        except Exception as exc:
+            self.after(0, lambda: self._on_upload_error(str(exc)))
+        else:
+            if success:
+                self.after(0, self._on_upload_success)
+            else:
+                self.after(0, lambda: self._on_upload_failure("TikTok hat den Upload ohne Erfolg beendet."))
+
+    def _on_upload_success(self):
+        self._report_status("Upload erfolgreich abgeschlossen.")
+        self._set_upload_in_progress(False)
+        self._upload_thread = None
+        self._end_task()
+        messagebox.showinfo("Upload", "Video erfolgreich hochgeladen.")
+
+    def _on_upload_failure(self, message: str):
+        self._report_status(message)
+        self._set_upload_in_progress(False)
+        self._upload_thread = None
+        self._end_task()
+        messagebox.showerror("Upload fehlgeschlagen", message)
+
+    def _on_upload_error(self, message: str):
+        self._report_status(f"Upload fehlgeschlagen: {message}")
+        self._set_upload_in_progress(False)
+        self._upload_thread = None
+        self._end_task()
+        messagebox.showerror("Upload fehlgeschlagen", message)
+
+    def _set_upload_in_progress(self, in_progress: bool):
+        if in_progress:
+            self.upload_button.state(["disabled"])
+        else:
+            self.upload_button.state(["!disabled"])
+
+    def _report_status(self, message: str):
+        self.after(0, lambda: self._append_status(message))
+
+    def _append_status(self, message: str):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        entry = f"[{timestamp}] {message}\n"
+        self.status_text.configure(state="normal")
+        self.status_text.insert(tk.END, entry)
+        self.status_text.see(tk.END)
+        self.status_text.configure(state="disabled")
+        self.status_message_var.set(message)
+
+    def _begin_task(self):
+        self._active_tasks += 1
+        if self._active_tasks == 1:
+            self.status_progress.start(10)
+
+    def _end_task(self):
+        if self._active_tasks == 0:
+            return
+        self._active_tasks -= 1
+        if self._active_tasks == 0:
+            self.status_progress.stop()
 
 
 if __name__ == "__main__":
