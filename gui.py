@@ -582,9 +582,11 @@ class TiktokUploaderGUI(tk.Tk):
                 status_callback=self._report_status,
             )
         except RuntimeError as err:
-            self.after(0, lambda: self._on_upload_error(str(err)))
+            err_msg = str(err)
+            self.after(0, lambda msg=err_msg: self._on_upload_error(msg))
         except Exception as exc:
-            self.after(0, lambda: self._on_upload_error(str(exc)))
+            exc_msg = str(exc)
+            self.after(0, lambda msg=exc_msg: self._on_upload_error(msg))
         else:
             if success:
                 self.after(0, self._on_upload_success)

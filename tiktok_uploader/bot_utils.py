@@ -5,6 +5,15 @@ from requests_auth_aws_sigv4 import AWSSigV4
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 
+def _relay_status(status_callback, message):
+	if not status_callback:
+		return
+	try:
+		status_callback(message)
+	except Exception:
+		pass
+
+
 def subprocess_jsvmp(js, user_agent, url):
 	proc = subprocess.Popen(['node', js, url, user_agent], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 	stdout, stderr = proc.communicate()
@@ -43,19 +52,25 @@ def crc32(content):
 	return ("%X" % (prev & 0xFFFFFFFF)).lower().zfill(8)
 
 
-def print_response(r):
-	print(f"{r.status_code}")
-	print(f"{r.content}")
+def print_response(r, status_callback=None):
+	status_line = f"{r.status_code}"
+	body_line = f"{r.content}"
+	print(status_line)
+	print(body_line)
+	_relay_status(status_callback, status_line)
+	_relay_status(status_callback, body_line)
 
 
-def print_error(url, r):
-	print(f"[-] An error occured while reaching {url}")
-	print_response(r)
+def print_error(url, r, status_callback=None):
+	error_line = f"[-] An error occured while reaching {url}"
+	print(error_line)
+	_relay_status(status_callback, error_line)
+	print_response(r, status_callback=status_callback)
 
 
-def assert_success(url, r):
+def assert_success(url, r, status_callback=None):
 	if r.status_code != 200:
-		print_error(url, r)
+		print_error(url, r, status_callback=status_callback)
 	return r.status_code == 200
 
 
@@ -103,19 +118,25 @@ def convert_tags(text, session):
 	return result, text_extra
 
 
-def printResponse(r):
-	print(f"{r }")
-	print(f"{r.content }")
+def printResponse(r, status_callback=None):
+	status_line = f"{r}"
+	body_line = f"{r.content}"
+	print(status_line)
+	print(body_line)
+	_relay_status(status_callback, status_line)
+	_relay_status(status_callback, body_line)
 
 
-def printError(url, r):
-	print(f"[-] An error occured while reaching {url}")
-	printResponse(r)
+def printError(url, r, status_callback=None):
+	error_line = f"[-] An error occured while reaching {url}"
+	print(error_line)
+	_relay_status(status_callback, error_line)
+	printResponse(r, status_callback=status_callback)
 
 
-def assertSuccess(url, r):
+def assertSuccess(url, r, status_callback=None):
 	if r.status_code != 200:
-		printError(url, r)
+		printError(url, r, status_callback=status_callback)
 	return r.status_code == 200
 
 

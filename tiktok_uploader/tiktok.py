@@ -129,7 +129,7 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 		project_url = f"https://www.tiktok.com/api/v1/web/project/create/?creation_id={creation_id}&type=1&aid=1988"
 		r = session.post(project_url)
 
-		if not assert_success(project_url, r):
+		if not assert_success(project_url, r, _report_status):
 			_report_status(f"[-] TikTok project creation failed with HTTP {r.status_code}")
 			return False
 
@@ -165,7 +165,11 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 			raise RuntimeError(f"TikTok project creation failed: {status_msg or 'unknown error'}")
 
 		# get project_id
-		video_id, session_key, upload_id, crcs, upload_host, store_uri, video_auth, aws_auth = upload_to_tiktok(processed_video, session)
+		upload_info = upload_to_tiktok(processed_video, session, status_callback=_report_status)
+		if not upload_info:
+			_report_status("[-] Failed to initialize TikTok upload session.")
+			return False
+		video_id, session_key, upload_id, crcs, upload_host, store_uri, video_auth, aws_auth = upload_info
 
 		url = f"https://{upload_host}/{store_uri}?uploadID={upload_id}&phase=finish&uploadmode=part"
 		headers = {
@@ -176,12 +180,12 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 
 		if proxy:
 			r = requests.post(url, headers=headers, data=data, proxies=session.proxies)
-			if not assert_success(url, r):
+			if not assert_success(url, r, _report_status):
 				_report_status(f"[-] TikTok chunk commit failed with HTTP {r.status_code}")
 				return False
 		else:
 			r = requests.post(url, headers=headers, data=data)
-			if not assert_success(url, r):
+			if not assert_success(url, r, _report_status):
 				_report_status(f"[-] TikTok chunk commit failed with HTTP {r.status_code}")
 				return False
 		#
@@ -193,7 +197,7 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 		data = '{"SessionKey":"' + session_key + '","Functions":[{"name":"GetMeta"}]}'
 
 		r = session.post(url, auth=aws_auth, data=data)
-		if not assert_success(url, r):
+		if not assert_success(url, r, _report_status):
 			_report_status(f"[-] TikTok ApplyUploadInner failed with HTTP {r.status_code}")
 			return False
 
@@ -204,7 +208,7 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 		}
 
 		r = session.head(url, headers=headers)
-		if not assert_success(url, r):
+		if not assert_success(url, r, _report_status):
 			_report_status(f"[-] TikTok preflight request failed with HTTP {r.status_code}")
 			return False
 
@@ -302,44 +306,44 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 		data = {
 			"post_common_info": {
 				"creation_id": creation_id,
-				"enter_post_page_from": 1,
-				"post_type": 3
-			},
-			"feature_common_info_list": [
-				{
-					"geofencing_regions": [],
-					"playlist_name": "",
-					"playlist_id": "",
-					"tcm_params": "{\"commerce_toggle_info\":{}}",
-					"sound_exemption": 0,
-					"anchors": [],
-					"vedit_common_info": {
-						"draft": "",
-						"video_id": video_id
-					},
-					"privacy_setting_info": {
-						"visibility_type": visibility_type,
-						"allow_duet": allow_duet,
-						"allow_stitch": allow_stitch,
-						"allow_comment": allow_comment
+					"enter_post_page_from": 1,
+					"post_type": 3
+				},
+				"feature_common_info_list": [
+					{
+						"geofencing_regions": [],
+						"playlist_name": "",
+						"playlist_id": "",
+						"tcm_params": "{\"commerce_toggle_info\":{}}",
+						"sound_exemption": 0,
+						"anchors": [],
+						"vedit_common_info": {
+							"draft": "",
+							"video_id": video_id
+						},
+						"privacy_setting_info": {
+							"visibility_type": visibility_type,
+							"allow_duet": allow_duet,
+							"allow_stitch": allow_stitch,
+							"allow_comment": allow_comment
+						}
 					}
-				}
-			],
-			"single_post_req_list": [
-				{
-					"batch_index": 0,
-					"video_id": video_id,
-					"is_long_video": 0,
-					"single_post_feature_info": {
-						"text": title,
-						"text_extra": text_extra,
-						"markup_text": title,
-						"music_info": {},
-						"poster_delay": 0,
+				],
+				"single_post_req_list": [
+					{
+						"batch_index": 0,
+						"video_id": video_id,
+						"is_long_video": 0,
+						"single_post_feature_info": {
+							"text": title,
+							"text_extra": text_extra,
+							"markup_text": title,
+							"music_info": {},
+							"poster_delay": 0,
+						}
 					}
-				}
-			]
-		}
+				]
+			}
 
 
 		# Add schedule_time to the payload if it's provided
@@ -354,6 +358,17 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 		uploaded = False
 		while True:
 			mstoken = session.cookies.get("msToken")
+			if not mstoken:
+				# TikTok expects msToken from visiting the main site; perform a lightweight GET if it's missing
+				bootstrap_url = "https://www.tiktok.com/"
+				bootstrap_resp = session.get(bootstrap_url, headers=headers)
+				if not assert_success(bootstrap_url, bootstrap_resp, _report_status):
+					_report_status("[-] Failed to obtain msToken from TikTok bootstrap endpoint.")
+					return False
+				mstoken = session.cookies.get("msToken")
+				if not mstoken:
+					_report_status("[-] TikTok did not issue an msToken cookie; aborting publish.")
+					return False
 			# xbogus = subprocess_jsvmp(os.path.join(os.getcwd(), "tiktok_uploader", "./x-bogus.js"), user_agent, f"app_name=tiktok_web&channel=tiktok_web&device_platform=web&aid=1988&msToken={mstoken}")
 			# /tiktok/web/project/post/v1/
 			js_path = os.path.join(os.getcwd(), "tiktok_uploader", "tiktok-signature", "browser.js")
@@ -383,9 +398,9 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 			# url = f"https://www.tiktok.com/api/v1/web/project/post/"
 			url = f"https://www.tiktok.com/tiktok/web/project/post/v1/"
 			r = session.request("POST", url, params=project_post_dict, data=json.dumps(data), headers=headers)
-			if not assertSuccess(url, r):
+			if not assertSuccess(url, r, _report_status):
 				_report_status("[-] Publish request rejected by TikTok.")
-				printError(url, r)
+				printError(url, r, _report_status)
 				return False
 
 			if r.json()["status_code"] == 0:
@@ -397,7 +412,7 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 				break
 			else:
 				_report_status("[-] Publish failed to TikTok.")
-				printError(url, r)
+				printError(url, r, _report_status)
 				return False
 			#
 			# try:
@@ -467,10 +482,10 @@ def _resolve_video_path(video_file: str) -> Path:
 	return candidate
 
 
-def upload_to_tiktok(video_file, session):
+def upload_to_tiktok(video_file, session, status_callback=None):
 	url = "https://www.tiktok.com/api/v1/video/upload/auth/?aid=1988"
 	r = session.get(url)
-	if not assert_success(url, r):
+	if not assert_success(url, r, status_callback):
 		return False
 
 	aws_auth = AWSSigV4(
@@ -487,7 +502,7 @@ def upload_to_tiktok(video_file, session):
 	url = f"https://www.tiktok.com/top/v1?Action=ApplyUploadInner&Version=2020-11-19&SpaceName=tiktok&FileType=video&IsInner=1&FileSize={file_size}&s=g158iqx8434"
 
 	r = session.get(url, auth=aws_auth)
-	if not assert_success(url, r):
+	if not assert_success(url, r, status_callback):
 		return False
 
 	# upload chunks
