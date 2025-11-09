@@ -1,5 +1,6 @@
 
 import os
+import platform
 import threading
 import tkinter as tk
 from datetime import datetime
@@ -12,6 +13,7 @@ from tkcalendar import DateEntry
 from tiktok_uploader import tiktok
 from tiktok_uploader.Video import Video
 from tiktok_uploader.gemini_caption import GeminiCaptionError, GeminiCaptionService
+from tiktok_uploader.videotoolbox_upscale import upscale_video_with_videotoolbox
 
 US_EASTERN = ZoneInfo("America/New_York")
 
@@ -218,6 +220,16 @@ class TiktokUploaderGUI(tk.Tk):
         )
         self.datacenter_combobox.grid(row=1, column=1, padx=(0, 10), pady=(0, 10), sticky="ew")
 
+        self.upscale_with_vt_var = tk.BooleanVar(value=False)
+        self.upscale_checkbox = ttk.Checkbutton(
+            advanced_frame,
+            text="Upscale to 4K (VideoToolbox Super Resolution)",
+            variable=self.upscale_with_vt_var,
+        )
+        self.upscale_checkbox.grid(row=2, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="w")
+        if platform.system() != "Darwin":
+            self.upscale_checkbox.state(["disabled"])
+
         # Upload button
         action_frame = ttk.Frame(right_column)
         action_frame.grid(row=3, column=0, padx=5, pady=(5, 5), sticky="e")
@@ -294,11 +306,19 @@ class TiktokUploaderGUI(tk.Tk):
             ("Video files", "*.mp4 *.mov *.avi *.mkv *.webm *.m4v"),
             ("All files", "*.*"),
         ]
-        file_path = filedialog.askopenfilename(
-            title="Select Video",
-            initialdir=initial_dir,
-            filetypes=filetypes,
-        )
+        try:
+            self.lift()
+            self.focus_force()
+            file_path = filedialog.askopenfilename(
+                title="Select Video",
+                initialdir=initial_dir,
+                filetypes=filetypes,
+                parent=self,
+            )
+        except Exception as err:
+            self._report_status(f"Dateiauswahl fehlgeschlagen: {err}")
+            messagebox.showerror("Browse Video", f"Dateidialog kann nicht geöffnet werden:\n{err}")
+            return
         if file_path:
             self.source_entry.delete(0, tk.END)
             self.source_entry.insert(0, file_path)
@@ -420,6 +440,7 @@ class TiktokUploaderGUI(tk.Tk):
             "ai_label": ai_label,
             "proxy": proxy or None,
             "datacenter": datacenter,
+            "upscale_with_videotoolbox": bool(self.upscale_with_vt_var.get()),
             "upload_type": upload_type,
         }
 
@@ -570,6 +591,10 @@ class TiktokUploaderGUI(tk.Tk):
                 self._report_status("YouTube-Download abgeschlossen.")
             else:
                 video_path = job["source"]
+
+            if job.get("upscale_with_videotoolbox"):
+                self._report_status("Upscale des Videos auf 4K über VideoToolbox Super Resolution.")
+                video_path = upscale_video_with_videotoolbox(video_path)
 
             self._report_status("Starte Upload zu TikTok.")
             success = tiktok.upload_video(
