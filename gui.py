@@ -116,6 +116,12 @@ class TiktokUploaderGUI(tk.Tk):
         self.caption_status_var = tk.StringVar(value="")
         self.caption_status_label = ttk.Label(caption_actions, textvariable=self.caption_status_var)
         self.caption_status_label.grid(row=0, column=0, sticky="w")
+        self.caption_general_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            caption_actions,
+            text="Caption ohne App-Fokus",
+            variable=self.caption_general_var,
+        ).grid(row=1, column=0, columnspan=2, pady=(6, 0), sticky="w")
         self.generate_caption_button = ttk.Button(caption_actions, text="Generate Caption with Gemini", command=self.generate_caption_with_gemini)
         self.generate_caption_button.grid(row=0, column=1, sticky="e")
 
@@ -516,15 +522,16 @@ class TiktokUploaderGUI(tk.Tk):
         self._begin_task()
         self._report_status("Starte Gemini-Caption-Generierung.")
 
+        general_caption = self.caption_general_var.get()
         self._caption_thread = threading.Thread(
-            target=self._capture_caption_worker, args=(video_path,), daemon=True
+            target=self._capture_caption_worker, args=(video_path, general_caption), daemon=True
         )
         self._caption_thread.start()
 
-    def _capture_caption_worker(self, video_path: str):
+    def _capture_caption_worker(self, video_path: str, general_caption: bool):
         try:
             pdfs = [path for path in self.framework_pdfs if os.path.isfile(path)]
-            service = GeminiCaptionService(pdf_paths=pdfs)
+            service = GeminiCaptionService(pdf_paths=pdfs, app_focus=not general_caption)
             suggestion = service.generate_caption(video_path)
         except GeminiCaptionError as err:
             self.after(0, lambda: self._on_caption_generation_error(str(err)))

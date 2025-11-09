@@ -68,6 +68,7 @@ class GeminiCaptionService:
         model_name: str = DEFAULT_MODEL,
         max_pdf_chars: int = DEFAULT_MAX_PDF_CHARS,
         request_timeout: int = DEFAULT_TIMEOUT_SECONDS,
+        app_focus: bool = True,
     ) -> None:
         if genai is None:
             raise GeminiCaptionError(
@@ -86,6 +87,7 @@ class GeminiCaptionService:
         self.pdf_paths = pdf_paths or []
         self.max_pdf_chars = max_pdf_chars
         self.request_timeout = request_timeout
+        self.app_focus = app_focus
 
         genai.configure(api_key=self.api_key)
         try:
@@ -179,6 +181,26 @@ class GeminiCaptionService:
         """Construct the instruction prompt sent alongside the video."""
         framework_text = "\n\n---\n\n".join(self._pdf_context)
         video_name = os.path.basename(video_path)
+        role_line = (
+            "You are an expert marketer for mobile apps on TikTok."
+            if self.app_focus
+            else "You are an expert TikTok marketer for creators, brands, and services beyond mobile apps."
+        )
+        objective_line = (
+            "Return an English TikTok hook/title and description that drive installs for the app."
+            if self.app_focus
+            else "Return an English TikTok hook/title and description that match the video's topic even when no app is promoted."
+        )
+        benefit_line = (
+            "Highlight why the app is valuable and how it solves the viewer's problem."
+            if self.app_focus
+            else "Highlight the key benefit, curiosity gap, or transformation for the viewer without inventing any app references."
+        )
+        hashtag_line = (
+            "Add up to five relevant, mixed-difficulty hashtags focused on the app niche."
+            if self.app_focus
+            else "Add up to five relevant, mixed-difficulty hashtags aligned with the video's niche or subject."
+        )
 
         context_sections = [f"Video filename: {video_name}"]
         if additional_context:
@@ -189,13 +211,14 @@ class GeminiCaptionService:
         context_block = "\n\n".join(context_sections)
 
         return (
-            "You are an expert marketer for mobile apps on TikTok. "
+            f"{role_line} "
             "Analyze the attached video together with the provided strategy frameworks. "
-            "Return an English TikTok hook/title and description that drive installs for the app. "
+            f"{objective_line} "
             "Use a concise, high-energy tone suitable for organic TikTok content, "
             "the first line must catch attention and highlight the benefit to the viewer. "
+            f"{benefit_line} "
             "Optimise the caption for conversions while remaining natural and organic. "
-            "Add up to five relevant, mixed-difficulty hashtags focused on the app niche. "
+            f"{hashtag_line} "
             "Do not repeat hashtags already present in the caption body.\n\n"
             f"{context_block}\n\n"
             "Respond ONLY with valid JSON in the following schema:\n"
