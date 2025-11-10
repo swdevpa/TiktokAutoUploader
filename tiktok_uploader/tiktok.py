@@ -350,6 +350,16 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 		if schedule_time > 0:
 			data["feature_common_info_list"][0]["schedule_time"] = schedule_time + int(time.time())
 
+		# TikTok expects brand flags inside the commerce toggle payload.
+		toggle_info = {}
+		if brand_organic_type:
+			toggle_info["brand_organic_type"] = brand_organic_type
+		if branded_content_type:
+			toggle_info["branded_content_type"] = branded_content_type
+		data["feature_common_info_list"][0]["tcm_params"] = json.dumps(
+			{"commerce_toggle_info": toggle_info if toggle_info else {}}
+		)
+
 		if ai_label:
 			aigc_payload = {"aigc_label_type": ai_label}
 			data["feature_common_info_list"][0]["aigc_info"] = dict(aigc_payload)
