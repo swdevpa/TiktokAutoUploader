@@ -46,6 +46,21 @@ Before you begin, ensure your server (e.g., Hetzner VPS running Ubuntu/Debian) h
 
 Follow these steps to set up the TikTok Auto Uploader API on your server.
 
+### Automated installer script
+
+If you are preparing a fresh Ubuntu/Debian server, you can run the bundled installer instead of typing each command manually.
+From the repository root execute:
+
+```bash
+sudo ./scripts/install-ubuntu-api.sh
+```
+
+The script performs the full workflow described below: it updates the system, installs Python/Node.js prerequisites, creates the `tiktokapi` user, installs the Python and Node dependencies (including Playwright Chromium), writes `/etc/tiktok-uploader-api.env` with an `UPLOAD_SECRET`, deploys the recommended `systemd` unit, and enables the service. It prints the new upload secret so you can copy it into your worker.
+
+Optional arguments let you customize file locations (see `--repo-dir`, `--env-file`, `--service-file`), seed your own `UPLOAD_SECRET`, or skip the systemd reload/enable step while still preparing the files.
+
+You can still follow the manual steps below if you prefer to control each phase yourself.
+
 ### System Setup (Ubuntu/Debian)
 
 1.  **Update System Packages**:
