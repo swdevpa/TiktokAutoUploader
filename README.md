@@ -83,7 +83,7 @@ You can still follow the manual steps below if you prefer to control each phase 
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/your-repo/TiktokAutoUploader.git /opt/TiktokAutoUploader
+    git clone git@github.com:swdevpa/TiktokAutoUploader.git /opt/TiktokAutoUploader
     ```
     *(Replace `https://github.com/your-repo/TiktokAutoUploader.git` with your actual repository URL)*
 

@@ -126,12 +126,24 @@ install_node() {
 }
 
 ensure_user() {
-  if ! id -u "$API_USER" >/dev/null 2>&1; then
+  if id -u "$API_USER" >/dev/null 2>&1; then
+    log "User $API_USER already exists"
+    local current_home
+    current_home="$(getent passwd "$API_USER" | cut -d: -f6)"
+    if [ "$current_home" != "$API_HOME" ]; then
+      log "Updating home directory of $API_USER to $API_HOME"
+      usermod -d "$API_HOME" "$API_USER"
+    fi
+    local current_shell
+    current_shell="$(getent passwd "$API_USER" | cut -d: -f7)"
+    if [ "$current_shell" != "/bin/bash" ]; then
+      log "Setting login shell for $API_USER to /bin/bash"
+      usermod -s /bin/bash "$API_USER"
+    fi
+  else
     log "Creating dedicated system user '$API_USER' with home $API_HOME"
     mkdir -p "$API_HOME"
     useradd -r -M -d "$API_HOME" -s /bin/bash -U "$API_USER"
-  else
-    log "User $API_USER already exists"
   fi
   mkdir -p "$API_HOME"
   chown "$API_USER:$API_USER" "$API_HOME"
