@@ -15,6 +15,7 @@ This project provides a FastAPI-based API to automate the uploading of videos to
     *   [Endpoint](#endpoint)
     *   [Request Parameters](#request-parameters)
     *   [Example cURL Command](#example-curl-command)
+    *   [Image Fade-In Endpoint](#image-fade-in-endpoint)
 5.  [Troubleshooting](#troubleshooting)
 6.  [Project Structure](#project-structure)
 7.  [Security Notes](#security-notes)
@@ -28,6 +29,7 @@ This project provides a FastAPI-based API to automate the uploading of videos to
 *   **Visibility Control**: Configures video visibility (public, private).
 *   **Interaction Settings**: Controls comments, duets, and stitches.
 *   **Branded Content & AI Labeling**: Options for branded content and AI-generated content labels.
+*   **Image Fade-In Videos**: Converts single images into short fade-in MP4 clips through a dedicated endpoint for thumbnails or preview reels.
 
 ## 2. Prerequisites
 
@@ -181,6 +183,7 @@ The API expects a `multipart/form-data` request with the following fields:
 *   `video_file` (File): The video file to upload.
 *   `session_file` (File): The TikTok session cookie file (e.g., `tiktok_session-yourusername.cookie`).
 *   `caption` (String): The video caption.
+*   `X-Upload-Auth` (Header): Upload secret header required by every endpoint (`X-Upload-Auth: <your secret>`).
 *   `schedule_time` (Integer, optional, default: `0`): Unix timestamp for scheduling. `0` means immediate upload.
 *   `allow_comment` (Integer, optional, default: `1`): `1` to allow comments, `0` to disallow.
 *   `allow_duet` (Integer, optional, default: `0`): `1` to allow duets, `0` to disallow.
@@ -198,6 +201,7 @@ Replace `5.161.110.4` with your server's IP address, and adjust file paths and p
 curl -X POST "http://5.161.110.4:8000/upload" \
   -H "accept: application/json" \
   -H "Content-Type: multipart/form-data" \
+  -H "X-Upload-Auth: <your secret>" \
   -F "video_file=@/Users/philipp/Documents/Projects/TiktokAutoUploader/VideosDirPath/upscaled/4efc3f04-c3a5-40fa-8570-1db4d94a6c47.mp4;type=video/mp4" \
   -F "session_file=@/Users/philipp/Documents/Projects/TiktokAutoUploader/CookiesDir/tiktok_session-lifewithmax.cookie;type=application/octet-stream" \
   -F "caption=Dies ist meine private Videobeschreibung #privat #apiupload" \
@@ -209,6 +213,31 @@ curl -X POST "http://5.161.110.4:8000/upload" \
   -F "brand_organic_type=0" \
   -F "branded_content_type=0" \
   -F "ai_label=0"
+```
+
+### Image Fade-In Endpoint
+
+`POST http://your_server_ip:8000/fadein-from-image`
+
+Use this endpoint when you need a smooth 5-second fade from black to an image (for intro slides, thumbnails, or preview reels). It returns an MP4 file with the fade effect.
+
+#### Request Parameters
+
+*   `image_file` (File): The source image that should appear after the fade-in. Supported MIME types are JPEG, PNG, WEBP, GIF, SVG, BMP, and TIFF.
+*   `duration` (Float, optional, default: `5.0`): Fade duration in seconds. The endpoint enforces `0 < duration ≤ 60` unless you override the `MAX_IMAGE_FADE_DURATION_SECONDS` env var.
+*   `X-Upload-Auth` (Header): Same upload secret header as `/upload`. Every request must include `X-Upload-Auth: <your secret>`.
+
+The server also validates `MAX_IMAGE_UPLOAD_BYTES` (defaults to 10 MB) and pads the video to a 16-pixel-aligned resolution to satisfy encoder constraints.
+
+#### Example cURL Command
+
+```bash
+curl -X POST "http://5.161.110.4:8000/fadein-from-image" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -H "X-Upload-Auth: <your secret>" \
+  -F "image_file=@/Users/philipp/Documents/Projects/TiktokAutoUploader/temp_images/cover.jpg;type=image/jpeg" \
+  -F "duration=5"
 ```
 
 ## 5. Troubleshooting

@@ -4,8 +4,9 @@ import tempfile
 from pathlib import Path
 import logging
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Request
-from fastapi.responses import JSONResponse
+from fastapi import BackgroundTasks, FastAPI, UploadFile, File, Form, HTTPException, Header, Request
+from fastapi.responses import FileResponse, JSONResponse
+from moviepy.editor import ImageClip
 
 # Import the upload function from your existing project
 # Adjust this import path if your project structure is different
@@ -27,6 +28,19 @@ ALLOWED_VIDEO_CONTENT_TYPES = {
     "video/x-matroska",
     "video/x-msvideo",
 }
+MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_UPLOAD_BYTES", 10 * 1024 * 1024))
+ALLOWED_IMAGE_CONTENT_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/svg+xml",
+    "image/bmp",
+    "image/tiff",
+}
+DEFAULT_IMAGE_FADE_DURATION_SECONDS = float(os.getenv("DEFAULT_IMAGE_FADE_DURATION_SECONDS", 5.0))
+MAX_IMAGE_FADE_DURATION_SECONDS = float(os.getenv("MAX_IMAGE_FADE_DURATION_SECONDS", 60.0))
 UPLOAD_SECRET = os.getenv("UPLOAD_SECRET")
 
 # Initialize Config (if needed by tiktok_upload_video, otherwise can be removed)
@@ -57,6 +71,16 @@ def ensure_content_type(content_type: str | None) -> None:
     if content_type not in ALLOWED_VIDEO_CONTENT_TYPES:
         logger.warning("Rejected upload because of content type %s.", content_type)
         raise HTTPException(status_code=400, detail="Unsupported video type.")
+
+
+def ensure_image_content_type(content_type: str | None) -> None:
+    if content_type not in ALLOWED_IMAGE_CONTENT_TYPES:
+        logger.warning("Rejected image because of content type %s.", content_type)
+        raise HTTPException(status_code=400, detail="Unsupported image type.")
+
+
+def cleanup_directory(path: str | Path) -> None:
+    shutil.rmtree(path, ignore_errors=True)
 
 @app.post("/upload")
 async def upload_tiktok_video(
@@ -141,6 +165,76 @@ async def upload_tiktok_video(
         # Clean up the temporary directory
         if temp_dir and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
+
+
+@app.post("/fadein-from-image")
+async def create_fadein_video_from_image(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    image_file: UploadFile = File(...),
+    duration: float = Form(DEFAULT_IMAGE_FADE_DURATION_SECONDS),
+    auth_token: str = Header(None, alias="X-Upload-Auth"),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    validate_secret_token(auth_token)
+    ensure_image_content_type(image_file.content_type)
+
+    if duration <= 0 or duration > MAX_IMAGE_FADE_DURATION_SECONDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Duration must be between 0 and {MAX_IMAGE_FADE_DURATION_SECONDS} seconds.",
+        )
+
+    temp_dir = tempfile.mkdtemp()
+    clip = None
+    try:
+        uploaded_basename = Path(image_file.filename or "image").name or "image"
+        image_path = Path(temp_dir) / uploaded_basename
+        with open(image_path, "wb") as buffer:
+            shutil.copyfileobj(image_file.file, buffer)
+
+        enforce_file_size(image_path, MAX_IMAGE_BYTES, "image")
+
+        clip = ImageClip(str(image_path)).set_duration(duration)
+        clip = clip.fadein(duration, initial_color=(0, 0, 0))
+
+        video_path = Path(temp_dir) / f"{Path(uploaded_basename).stem or 'image'}_fadein.mp4"
+        clip.write_videofile(
+            str(video_path),
+            codec="libx264",
+            fps=24,
+            audio=False,
+            preset="medium",
+            threads=2,
+            ffmpeg_params=["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2"],
+            verbose=False,
+            logger=None,
+        )
+
+        background_tasks.add_task(cleanup_directory, temp_dir)
+        logger.info(
+            "Generated fade-in video for %s from %s (%.2f seconds) at %s",
+            client_ip,
+            image_file.filename,
+            duration,
+            video_path,
+        )
+        return FileResponse(
+            str(video_path),
+            media_type="video/mp4",
+            filename=video_path.name,
+        )
+
+    except HTTPException:
+        cleanup_directory(temp_dir)
+        raise
+    except Exception as exc:
+        cleanup_directory(temp_dir)
+        logger.exception("Failed to create fade-in video from %s: %s", image_file.filename, exc)
+        raise HTTPException(status_code=500, detail=f"Failed to create fade-in video: {exc}")
+    finally:
+        if clip:
+            clip.close()
 
 if __name__ == "__main__":
     import uvicorn
