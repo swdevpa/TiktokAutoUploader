@@ -304,3 +304,54 @@ The `/upload` endpoint now rejects any request missing the shared secret in the 
 5.  Configure your worker to send `X-Upload-Auth: your_generated_secret_here` when calling `/upload`.
 
 To rotate the secret later, update `/etc/tiktok-uploader-api.env`, repeat step 4, and push the new secret to the worker.
+
+## 8. Cloudflare Tunnel (empfohlen)
+
+Ein Cloudflare Tunnel erlaubt deinem Worker oder einem Browser, `https://your-domain/upload` zu erreichen, während du intern weiter `uvicorn` auf `http://localhost:8000` laufen lässt.
+
+1.  **Installiere `cloudflared`** auf dem Hetzner-Server:
+    ```bash
+    curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
+    sudo dpkg -i /tmp/cloudflared.deb
+    rm /tmp/cloudflared.deb
+    ```
+
+2.  **Authentifiziere dich bei Cloudflare** (öffne den Link im Browser, wähle deine Zone aus):
+    ```bash
+    cloudflared login
+    ```
+
+3.  **Erstelle einen benannten Tunnel**:
+    ```bash
+    cloudflared tunnel create tiktok-uploader
+    ```
+
+4.  **Definiere eine Tunnel-Konfiguration** in `/etc/cloudflared/config.yml`:
+    ```yaml
+    tunnel: <Tunnel-ID>          # aus cloudflared tunnel create
+    credentials-file: /root/.cloudflared/<Tunnel-ID>.json
+
+    ingress:
+      - hostname: upload.example.com
+        service: http://localhost:8000
+      - service: http_status:404
+    ```
+    Ersetze `upload.example.com` mit der Domain/Subdomain, die dein Worker anspricht.
+
+5.  **Füge eine DNS-Route hinzu** (wenn du Cloudflare DNS verwendest):
+    ```bash
+    cloudflared tunnel route dns tiktok-uploader upload.example.com
+    ```
+
+6.  **Starte den Tunnel als Systemd-Service**:
+    ```bash
+    sudo cloudflared service install
+    sudo systemctl enable cloudflared
+    sudo systemctl start cloudflared
+    ```
+
+7.  **Teste die Verbindung**: `curl https://upload.example.com/upload` (mit `X-Upload-Auth`) sollte deine FastAPI-Richtlinie treffen.
+
+8.  **Aktualisiere den Cloudflare Worker** so, dass er `fetch("https://upload.example.com/upload", { headers: {"X-Upload-Auth": "..."} })` nutzt. TLS und das Cloudflare-Edge-Netzwerk sind jetzt inklusive.
+
+Mit diesem Setup musst du keine eigenen TLS-Zertifikate verwalten. Der Tunnel macht deine lokale API über eine dedizierte Cloudflare-Domain erreichbar, und dein Worker bleibt der einzige autorisierte Client dank `UPLOAD_SECRET`.
