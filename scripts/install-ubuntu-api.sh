@@ -64,7 +64,7 @@ require_root() {
 
 run_as_api() {
   local cmd="$1"
-  runuser -l "$API_USER" -- /bin/bash -c "$cmd"
+  sudo -u "$API_USER" -H bash -c "$cmd"
 }
 
 parse_args() {
