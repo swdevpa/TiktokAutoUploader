@@ -59,6 +59,8 @@ The script performs the full workflow described below: it updates the system, in
 
 Optional arguments let you customize file locations (see `--repo-dir`, `--env-file`, `--service-file`), seed your own `UPLOAD_SECRET`, or skip the systemd reload/enable step while still preparing the files.
 
+The installer now creates a `.venv` inside the repository and runs `uvicorn` from that virtual environment so every deployment uses the exact Python dependencies that were installed for the project.
+
 You can still follow the manual steps below if you prefer to control each phase yourself.
 
 ### System Setup (Ubuntu/Debian)

@@ -32,6 +32,7 @@ SERVICE_FILE="$SERVICE_FILE_DEFAULT"
 ENV_FILE="$ENV_FILE_DEFAULT"
 SKIP_SYSTEMD=0
 UPLOAD_SECRET_OVERRIDE=""
+VENV_DIR=""
 
 usage() {
   cat <<'EOF'
@@ -103,9 +104,23 @@ parse_args() {
 
 ensure_repo() {
   REPO_DIR="$(realpath "$REPO_DIR")"
+  VENV_DIR="$REPO_DIR/.venv"
   if [ ! -f "$REPO_DIR/api.py" ]; then
     fatal "Cannot locate api.py in $REPO_DIR. Run this script from the repository root or pass --repo-dir."
   fi
+}
+
+setup_python_venv() {
+  if [ -z "$VENV_DIR" ]; then
+    fatal "Virtualenv directory is not set."
+  fi
+  log "Creating Python virtualenv at $VENV_DIR"
+  if [ ! -d "$VENV_DIR" ]; then
+    python3 -m venv "$VENV_DIR"
+  else
+    log "Virtualenv already exists; reusing $VENV_DIR"
+  fi
+  chown -R "$API_USER:$API_USER" "$VENV_DIR"
 }
 
 install_packages() {
@@ -150,8 +165,13 @@ ensure_user() {
 }
 
 install_python_deps() {
-  log "Installing Python dependencies from requirements.txt"
-  run_as_api "set -euo pipefail && cd '$REPO_DIR' && python3 -m pip install --upgrade pip setuptools wheel && python3 -m pip install --no-cache-dir -r requirements.txt"
+  if [ -z "$VENV_DIR" ] || [ ! -d "$VENV_DIR" ]; then
+    fatal "Virtualenv missing at $VENV_DIR"
+  fi
+  log "Installing Python dependencies into $VENV_DIR"
+  "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
+  "$VENV_DIR/bin/pip" install --no-cache-dir -r "$REPO_DIR/requirements.txt"
+  chown -R "$API_USER:$API_USER" "$VENV_DIR"
 }
 
 install_node_deps() {
@@ -189,7 +209,7 @@ EOF
 write_service() {
   mkdir -p "$(dirname "$SERVICE_FILE")"
   local python_bin
-  python_bin="$(command -v python3 || echo /usr/bin/python3)"
+  python_bin="$VENV_DIR/bin/python"
   local playwright_path="$REPO_DIR/tiktok_uploader/tiktok-signature/.playwright-browsers"
   log "Writing systemd unit to $SERVICE_FILE"
   cat <<EOF >"$SERVICE_FILE"
@@ -203,7 +223,7 @@ Group=$API_USER
 WorkingDirectory=$REPO_DIR
 EnvironmentFile=$ENV_FILE
 Environment="PLAYWRIGHT_BROWSERS_PATH=$playwright_path"
-ExecStart=/bin/bash -c "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin $python_bin -m uvicorn api:app --host 0.0.0.0 --port 8000"
+ExecStart=/bin/bash -c "PATH=$VENV_DIR/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin $python_bin -m uvicorn api:app --host 0.0.0.0 --port 8000"
 Restart=always
 RestartSec=10
 StandardOutput=syslog
@@ -244,6 +264,7 @@ main() {
   ensure_user
   log "Ensuring repository files are owned by $API_USER"
   chown -R "$API_USER:$API_USER" "$REPO_DIR"
+  setup_python_venv
   install_python_deps
   install_node_deps
   ensure_env_file
