@@ -17,6 +17,7 @@ This project provides a FastAPI-based API to automate the uploading of videos to
     *   [Example cURL Command](#example-curl-command)
 5.  [Troubleshooting](#troubleshooting)
 6.  [Project Structure](#project-structure)
+7.  [Security Notes](#security-notes)
 
 ## 1. Features
 
@@ -125,17 +126,18 @@ To ensure the API runs continuously and restarts automatically, set it up as a s
     Description=TikTok Uploader API Service
     After=network.target
 
-    [Service]
-    User=tiktokapi
-    Group=tiktokapi
-    WorkingDirectory=/opt/TiktokAutoUploader
-    Environment="PLAYWRIGHT_BROWSERS_PATH=/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers"
-    ExecStart=/bin/bash -c "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /usr/bin/python3 -m uvicorn api:app --host 0.0.0.0 --port 8000"
-    Restart=always
-    RestartSec=10
-    StandardOutput=syslog
-    StandardError=syslog
-    SyslogIdentifier=tiktok-uploader-api
+[Service]
+User=tiktokapi
+Group=tiktokapi
+WorkingDirectory=/opt/TiktokAutoUploader
+EnvironmentFile=/etc/tiktok-uploader-api.env
+Environment="PLAYWRIGHT_BROWSERS_PATH=/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers"
+ExecStart=/bin/bash -c "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /usr/bin/python3 -m uvicorn api:app --host 0.0.0.0 --port 8000"
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=tiktok-uploader-api
 
     [Install]
     WantedBy=multi-user.target
@@ -267,4 +269,38 @@ curl -X POST "http://5.161.110.4:8000/upload" \
 ├── CookiesDir/             # Directory to store TikTok session cookie files
 ├── VideosDirPath/          # Directory for video files (e.g., upscaled videos)
 └── ... (other project files)
-```
+
+## 7. Security Notes
+
+### Upload secret (`UPLOAD_SECRET`)
+
+The `/upload` endpoint now rejects any request missing the shared secret in the `X-Upload-Auth` header. Only callers that know the secret (your Cloudflare Worker plus any trusted scripts) will succeed.
+
+1.  Generate a strong secret on your Hetzner server:
+    ```bash
+    openssl rand -hex 32
+    ```
+
+2.  Store it in a root-owned file so systemd can inject it:
+    ```bash
+    sudo tee /etc/tiktok-uploader-api.env <<'EOF'
+    UPLOAD_SECRET=your_generated_secret_here
+    EOF
+    ```
+    Replace `your_generated_secret_here` with the value from step 1.
+
+3.  Lock down the file:
+    ```bash
+    sudo chmod 600 /etc/tiktok-uploader-api.env
+    sudo chown root:root /etc/tiktok-uploader-api.env
+    ```
+
+4.  Reload systemd and restart the service so it picks up the secret:
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl restart tiktok-uploader-api
+    ```
+
+5.  Configure your worker to send `X-Upload-Auth: your_generated_secret_here` when calling `/upload`.
+
+To rotate the secret later, update `/etc/tiktok-uploader-api.env`, repeat step 4, and push the new secret to the worker.
