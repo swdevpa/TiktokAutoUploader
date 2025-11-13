@@ -151,7 +151,7 @@ Group=tiktokapi
 WorkingDirectory=/opt/TiktokAutoUploader
 EnvironmentFile=/etc/tiktok-uploader-api.env
 Environment="PLAYWRIGHT_BROWSERS_PATH=/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers"
-ExecStart=/bin/bash -c "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /usr/bin/python3 -m uvicorn api:app --host 0.0.0.0 --port 8000"
+ExecStart=/bin/bash -c "PATH=/opt/TiktokAutoUploader/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /opt/TiktokAutoUploader/.venv/bin/python -m uvicorn api:app --host 0.0.0.0 --port 8000"
 Restart=always
 RestartSec=10
 StandardOutput=syslog
@@ -183,6 +183,11 @@ SyslogIdentifier=tiktok-uploader-api
 6.  **Monitor logs for issues**:
     ```bash
     sudo journalctl -u tiktok-uploader-api -f
+    ```
+
+7.  **Install Python dependencies inside the virtualenv as `tiktokapi` before starting the service**:
+    ```bash
+    sudo -H -u tiktokapi /opt/TiktokAutoUploader/.venv/bin/python -m pip install -r /opt/TiktokAutoUploader/requirements.txt
     ```
 
 ## 4. API Usage
@@ -236,7 +241,7 @@ curl -X POST "http://5.161.110.4:8000/upload" \
 
 `POST http://your_server_ip:8000/fadein-from-image`
 
-Use this endpoint when you need a smooth 5-second fade from black to an image (for intro slides, thumbnails, or preview reels). It returns an MP4 file with the fade effect.
+Use this endpoint when you need a smooth 5-second fade from black to an image (for intro slides, thumbnails, or preview reels). It returns an MP4 file with the fade effect. The server calls the system `ffmpeg` binary to build the video at 24 fps, so make sure the `ffmpeg` package is installed and on the same `PATH` that the systemd service uses.
 
 #### Request Parameters
 

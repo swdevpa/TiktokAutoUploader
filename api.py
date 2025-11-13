@@ -1,12 +1,12 @@
 import os
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 import logging
 
 from fastapi import BackgroundTasks, FastAPI, UploadFile, File, Form, HTTPException, Header, Request
 from fastapi.responses import FileResponse, JSONResponse
-from moviepy.editor import ImageClip
 
 # Import the upload function from your existing project
 # Adjust this import path if your project structure is different
@@ -81,6 +81,31 @@ def ensure_image_content_type(content_type: str | None) -> None:
 
 def cleanup_directory(path: str | Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
+
+
+def generate_fadein_video_with_ffmpeg(image_path: Path, output_path: Path, duration: float) -> None:
+    fade_filter = f"format=yuv420p,fade=t=in:st=0:d={duration},fps=24,scale=ceil(iw/2)*2:ceil(ih/2)*2"
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-loop",
+        "1",
+        "-i",
+        str(image_path),
+        "-vf",
+        fade_filter,
+        "-t",
+        str(duration),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-an",
+        "-threads",
+        "2",
+        str(output_path),
+    ]
+    subprocess.run(cmd, check=True, capture_output=True, text=True)
 
 @app.post("/upload")
 async def upload_tiktok_video(
@@ -186,7 +211,6 @@ async def create_fadein_video_from_image(
         )
 
     temp_dir = tempfile.mkdtemp()
-    clip = None
     try:
         uploaded_basename = Path(image_file.filename or "image").name or "image"
         image_path = Path(temp_dir) / uploaded_basename
@@ -195,21 +219,8 @@ async def create_fadein_video_from_image(
 
         enforce_file_size(image_path, MAX_IMAGE_BYTES, "image")
 
-        clip = ImageClip(str(image_path)).set_duration(duration)
-        clip = clip.fadein(duration, initial_color=(0, 0, 0))
-
         video_path = Path(temp_dir) / f"{Path(uploaded_basename).stem or 'image'}_fadein.mp4"
-        clip.write_videofile(
-            str(video_path),
-            codec="libx264",
-            fps=24,
-            audio=False,
-            preset="medium",
-            threads=2,
-            ffmpeg_params=["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2"],
-            verbose=False,
-            logger=None,
-        )
+        generate_fadein_video_with_ffmpeg(image_path, video_path, duration)
 
         background_tasks.add_task(cleanup_directory, temp_dir)
         logger.info(
@@ -228,13 +239,18 @@ async def create_fadein_video_from_image(
     except HTTPException:
         cleanup_directory(temp_dir)
         raise
+    except subprocess.CalledProcessError as exc:
+        cleanup_directory(temp_dir)
+        logger.exception(
+            "FFmpeg failed to create fade-in video from %s: %s",
+            image_file.filename,
+            exc.stderr or exc,
+        )
+        raise HTTPException(status_code=500, detail="Failed to render fade-in video.")
     except Exception as exc:
         cleanup_directory(temp_dir)
         logger.exception("Failed to create fade-in video from %s: %s", image_file.filename, exc)
         raise HTTPException(status_code=500, detail=f"Failed to create fade-in video: {exc}")
-    finally:
-        if clip:
-            clip.close()
 
 if __name__ == "__main__":
     import uvicorn
