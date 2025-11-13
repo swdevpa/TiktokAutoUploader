@@ -312,6 +312,7 @@ curl -X POST "http://5.161.110.4:8000/fadein-from-image" \
   -F "image_file=@/Users/philipp/Documents/Projects/TiktokAutoUploader/temp_images/cover.jpg;type=image/jpeg" \
   -F "duration=5"
 ```
+Because the endpoint returns the generated MP4 itself, add `-o fadein.mp4` (or a different filename) to the command so `curl` writes the result to disk instead of dumping the binary into your terminal.
 
 ## 5. Troubleshooting
 
