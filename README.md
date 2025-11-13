@@ -141,43 +141,26 @@ To ensure the API runs continuously and restarts automatically, set it up as a s
     ```
 
 2.  **Add the following content to the file**:
-[Service]
-User=tiktokapi
-Group=tiktokapi
-WorkingDirectory=/opt/TiktokAutoUploader
-EnvironmentFile=/etc/tiktok-uploader-api.env
-Environment="PLAYWRIGHT_BROWSERS_PATH=/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers"
-ExecStart=/bin/bash -c "PATH=/opt/TiktokAutoUploader/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /opt/TiktokAutoUploader/.venv/bin/python -m uvicorn api:app --host 0.0.0.0 --port 8000"
-Restart=always
-RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=tiktok-uploader-api
-
-[Install]
-WantedBy=multi-user.target
     ```ini
     [Unit]
     Description=TikTok Uploader API Service
     After=network.target
 
-[Service]
-User=tiktokapi
-Group=tiktokapi
-WorkingDirectory=/opt/TiktokAutoUploader
-EnvironmentFile=/etc/tiktok-uploader-api.env
-Environment="PLAYWRIGHT_BROWSERS_PATH=/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers"
-ExecStart=/bin/bash -c "PATH=/opt/TiktokAutoUploader/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /opt/TiktokAutoUploader/.venv/bin/python -m uvicorn api:app --host 0.0.0.0 --port 8000"
-Restart=always
-RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=tiktok-uploader-api
+    [Service]
+    User=tiktokapi
+    Group=tiktokapi
+    WorkingDirectory=/opt/TiktokAutoUploader
+    EnvironmentFile=/etc/tiktok-uploader-api.env
+    Environment="PLAYWRIGHT_BROWSERS_PATH=/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers"
+    ExecStart=/bin/bash -c "PATH=/opt/TiktokAutoUploader/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /opt/TiktokAutoUploader/.venv/bin/python -m uvicorn api:app --host 0.0.0.0 --port 8000"
+    Restart=always
+    RestartSec=10
+    SyslogIdentifier=tiktok-uploader-api
 
     [Install]
     WantedBy=multi-user.target
     ```
-    *Note the `Environment="PLAYWRIGHT_BROWSERS_PATH=..."` line. This is crucial for the systemd service to find the Playwright browser binaries.*
+    *Note the `Environment="PLAYWRIGHT_BROWSERS_PATH=..."` line. This is crucial for the systemd service to find the Playwright browser binaries. Omit `StandardOutput`/`StandardError` from the unit so systemd keeps logging to the journal (the old `syslog` target is deprecated).*
 
 3.  **Reload systemd daemon**:
     ```bash
@@ -205,6 +188,58 @@ SyslogIdentifier=tiktok-uploader-api
     ```bash
     sudo -H -u tiktokapi /opt/TiktokAutoUploader/.venv/bin/python -m pip install -r /opt/TiktokAutoUploader/requirements.txt
     ```
+
+### Reinstalling & Updating
+
+If you delete the `.venv` folder or need to pull a fresh version of the code, follow these steps from the `/opt/TiktokAutoUploader` directory on your server:
+
+1.  **Stop the service so the files can be updated safely**:
+    ```bash
+    sudo systemctl stop tiktok-uploader-api
+    ```
+
+2.  **Pull the latest code** (adjust the branch name as needed):
+    ```bash
+    cd /opt/TiktokAutoUploader
+    sudo -H -u tiktokapi git fetch --all
+    sudo -H -u tiktokapi git pull --ff-only
+    ```
+
+3.  **Recreate the Python virtual environment** (install `python3-venv` first if necessary):
+    ```bash
+    sudo apt install -y python3-venv
+    sudo -H -u tiktokapi python3 -m venv /opt/TiktokAutoUploader/.venv
+    sudo chown -R tiktokapi:tiktokapi /opt/TiktokAutoUploader/.venv
+    ```
+
+4.  **Install or upgrade the Python dependencies inside that venv**:
+    ```bash
+    sudo -H -u tiktokapi /opt/TiktokAutoUploader/.venv/bin/python -m pip install --upgrade pip
+    sudo -H -u tiktokapi /opt/TiktokAutoUploader/.venv/bin/python -m pip install -r /opt/TiktokAutoUploader/requirements.txt
+    ```
+
+5.  **Ensure the system has `ffmpeg` on the PATH**:
+    ```bash
+    sudo apt install -y ffmpeg
+    ```
+
+6.  **Reload systemd and restart the service**:
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl restart tiktok-uploader-api
+    ```
+
+7.  **Verify the log for startup errors**:
+    ```bash
+    sudo journalctl -u tiktok-uploader-api.service -n 40 --no-pager
+    ```
+
+8.  **Double-check module availability** (MoviePy is still required by other parts of the project):
+    ```bash
+    sudo -H -u tiktokapi /opt/TiktokAutoUploader/.venv/bin/python -c 'import moviepy.editor; print(moviepy.editor.__file__)'
+    ```
+
+If the command above succeeds and the journal no longer shows `ModuleNotFoundError`, the service is running from the rebuilt venv with all dependencies in place. Remember to keep `/etc/tiktok-uploader-api.env` populated with your `UPLOAD_SECRET` and to keep the `PLAYWRIGHT_BROWSERS_PATH` environment variable pointed to `/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers`.
 
 ## 4. API Usage
 
@@ -285,6 +320,9 @@ curl -X POST "http://5.161.110.4:8000/fadein-from-image" \
 
 *   **`Error during upload: [Errno 2] No such file or directory: 'ffmpeg'`**:
     `ffmpeg` is not installed or not in the system's PATH. Install it using `sudo apt install ffmpeg -y`. If it's installed but still not found, ensure the `PATH` environment variable in your systemd service file includes the directory where `ffmpeg` is located (e.g., `/usr/bin`).
+
+*   **`fastapi` raises `RuntimeError: Form data requires `python-multipart` to be installed`**:
+    FastAPI’s form parsing requires `python-multipart`. That dependency is now in `requirements.txt`, so reinstall from the repo (`sudo -H -u tiktokapi /opt/TiktokAutoUploader/.venv/bin/python -m pip install -r /opt/TiktokAutoUploader/requirements.txt`) if it still reports missing packages.
 
 *   **`Playwright browser binaries are missing. Run 'npx playwright install chromium' inside tiktok_uploader/tiktok-signature.`**:
     This means Playwright cannot find the browser it needs. Ensure you have:
