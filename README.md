@@ -11,6 +11,7 @@ This project provides a FastAPI-based API to automate the uploading of videos to
     *   [Project Setup](#project-setup)
     *   [Node.js and Playwright Setup](#nodejs-and-playwright-setup)
     *   [Systemd Service Configuration](#systemd-service-configuration)
+    *   [Reinstalling & Updating](#reinstalling--updating)
 4.  [API Usage](#api-usage)
     *   [Endpoint](#endpoint)
     *   [Request Parameters](#request-parameters)
@@ -140,6 +141,21 @@ To ensure the API runs continuously and restarts automatically, set it up as a s
     ```
 
 2.  **Add the following content to the file**:
+[Service]
+User=tiktokapi
+Group=tiktokapi
+WorkingDirectory=/opt/TiktokAutoUploader
+EnvironmentFile=/etc/tiktok-uploader-api.env
+Environment="PLAYWRIGHT_BROWSERS_PATH=/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers"
+ExecStart=/bin/bash -c "PATH=/opt/TiktokAutoUploader/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /opt/TiktokAutoUploader/.venv/bin/python -m uvicorn api:app --host 0.0.0.0 --port 8000"
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=tiktok-uploader-api
+
+[Install]
+WantedBy=multi-user.target
     ```ini
     [Unit]
     Description=TikTok Uploader API Service
