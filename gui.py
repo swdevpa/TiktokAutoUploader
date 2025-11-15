@@ -30,6 +30,7 @@ class TiktokUploaderGUI(tk.Tk):
         self.notebook.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
 
         self.video_dir = os.path.join(os.getcwd(), "VideosDirPath")
+        self.cookies_dir = os.path.join(os.getcwd(), "CookiesDir")
         self.visibility_options = {"Public": 0, "Private": 1}
         self.datacenter_options = [
             "Automatic",
@@ -324,7 +325,7 @@ class TiktokUploaderGUI(tk.Tk):
             self.source_entry.insert(0, file_path)
 
     def _known_users(self):
-        cookie_dir = os.path.join(os.getcwd(), "CookiesDir")
+        cookie_dir = self.cookies_dir
         if not os.path.exists(cookie_dir):
             return []
         users = []
@@ -370,7 +371,7 @@ class TiktokUploaderGUI(tk.Tk):
     def remove_user(self):
         selected_user = self.user_listbox.get(tk.ACTIVE)
         if selected_user:
-            cookie_file = os.path.join(os.getcwd(), "CookiesDir", f"tiktok_session-{selected_user}.cookie")
+            cookie_file = os.path.join(self.cookies_dir, f"tiktok_session-{selected_user}.cookie")
             if os.path.exists(cookie_file):
                 os.remove(cookie_file)
                 self.update_user_list()
@@ -597,8 +598,12 @@ class TiktokUploaderGUI(tk.Tk):
                 video_path = upscale_video_with_videotoolbox(video_path)
 
             self._report_status("Starte Upload zu TikTok.")
+            session_file_path = os.path.join(self.cookies_dir, f"tiktok_session-{job['user']}.cookie")
+            if not os.path.exists(session_file_path):
+                raise RuntimeError(f"Cookie-Datei für Nutzer {job['user']} nicht gefunden.")
+
             success = tiktok.upload_video(
-                job["user"],
+                session_file_path,
                 video_path,
                 job["caption"],
                 schedule_time=job["schedule_time"],
