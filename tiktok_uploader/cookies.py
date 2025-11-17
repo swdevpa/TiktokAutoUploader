@@ -6,7 +6,9 @@ import os
 
 
 def load_cookies_from_file(filename: str, cookies_path=None):
-    if not cookies_path:
+    if os.path.isabs(filename):
+        cookie_path = filename
+    elif not cookies_path:
         cookie_path = os.path.join(os.getcwd(), Config.get().cookies_dir, filename + ".cookie")
     else:
         cookie_path = os.path.join(cookies_path, filename + ".cookie")

@@ -50,7 +50,7 @@ def login(login_name: str):
 
 
 # Local Code...
-def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, allow_duet=0, allow_stitch=0, visibility_type=0, brand_organic_type=0, branded_content_type=0, ai_label=0, proxy=None, datacenter=None, status_callback=None):
+def upload_video(session_file_path, video, title, schedule_time=0, allow_comment=1, allow_duet=0, allow_stitch=0, visibility_type=0, brand_organic_type=0, branded_content_type=0, ai_label=0, proxy=None, datacenter=None, status_callback=None):
 	def _report_status(message):
 		if status_callback:
 			try:
@@ -66,7 +66,7 @@ def upload_video(session_user, video, title, schedule_time=0, allow_comment=1, a
 		user_agent = _UA
 		_report_status("[-] Could not get random user agent, using default")
 
-	cookies = load_cookies_from_file(f"tiktok_session-{session_user}")
+	cookies = load_cookies_from_file(session_file_path)
 	session_id = next((c["value"] for c in cookies if c["name"] == 'sessionid'), None)
 	dc_from_cookie = next((c["value"] for c in cookies if c["name"] == 'tt-target-idc'), None)
 	dc_id = datacenter or dc_from_cookie
