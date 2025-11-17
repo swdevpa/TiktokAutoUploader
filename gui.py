@@ -52,6 +52,7 @@ class TiktokUploaderGUI(tk.Tk):
         self.create_upload_tab()
         self.create_users_tab()
         self.create_videos_tab()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def create_upload_tab(self):
         upload_tab = ttk.Frame(self.notebook)
@@ -656,6 +657,24 @@ class TiktokUploaderGUI(tk.Tk):
             self.upload_button.state(["disabled"])
         else:
             self.upload_button.state(["!disabled"])
+
+    def _on_close(self):
+        self._cleanup_video_subfolder_files()
+        self.destroy()
+
+    def _cleanup_video_subfolder_files(self):
+        if not os.path.isdir(self.video_dir):
+            return
+        for root, _, files in os.walk(self.video_dir):
+            if os.path.abspath(root) == os.path.abspath(self.video_dir):
+                continue
+            # Remove every file in the video subdirectories but keep directory structure.
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
+                try:
+                    os.remove(file_path)
+                except OSError:
+                    continue
 
     def _report_status(self, message: str):
         self.after(0, lambda: self._append_status(message))
