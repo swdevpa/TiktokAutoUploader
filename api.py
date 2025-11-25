@@ -83,36 +83,50 @@ def cleanup_directory(path: str | Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
 
 
-def generate_fadein_video_with_ffmpeg(image_path: Path, output_path: Path, duration: float, audio_path: Path | None = None) -> None:
-    fade_filter = f"format=yuv420p,fade=t=in:st=0:d={duration},fps=24,scale=ceil(iw/2)*2:ceil(ih/2)*2"
+def generate_fadein_video_with_ffmpeg(image_paths: list[Path], output_path: Path, fade_duration: float, image_duration: float, audio_path: Path | None = None) -> None:
+    # Prepare inputs
+    inputs = []
+    filter_complex_parts = []
+    
+    # Common scale and fps
+    target_w = 1080
+    target_h = 1920
+    
+    for i, img_path in enumerate(image_paths):
+        inputs.extend(["-loop", "1", "-t", str(image_duration), "-i", str(img_path)])
+        # Scale and setsar to ensure consistency
+        filter_complex_parts.append(f"[{i}:v]scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}];")
+    
+    # Concat
+    concat_inputs = "".join([f"[v{i}]" for i in range(len(image_paths))])
+    filter_complex_parts.append(f"{concat_inputs}concat=n={len(image_paths)}:v=1:a=0[v_concat];")
+    
+    # Apply Fade In to the concatenated video
+    filter_complex_parts.append(f"[v_concat]format=yuv420p,fade=t=in:st=0:d={fade_duration},fps=30[v_final]")
+    
+    filter_complex = "".join(filter_complex_parts)
     
     cmd = ["ffmpeg", "-y"]
+    cmd.extend(inputs)
     
-    # Input 0: Image
-    cmd.extend(["-loop", "1", "-i", str(image_path)])
-    
-    # Input 1: Audio (optional)
+    # Audio input (index = len(image_paths))
     if audio_path:
-        # -stream_loop -1 makes the audio loop indefinitely
         cmd.extend(["-stream_loop", "-1", "-i", str(audio_path)])
     
     cmd.extend([
-        "-vf", fade_filter,
-        "-t", str(duration),
+        "-filter_complex", filter_complex,
+        "-map", "[v_final]",
         "-c:v", "libx264",
         "-preset", "medium",
     ])
     
     if audio_path:
         cmd.extend([
+            "-map", f"{len(image_paths)}:a",
             "-c:a", "aac",
-            "-map", "0:v",
-            "-map", "1:a",
-            "-shortest" # Ensure video stops when the shortest stream ends (though -t handles duration)
+            "-shortest"
         ])
-    else:
-        cmd.append("-an")
-        
+    
     cmd.extend([
         "-threads", "2",
         str(output_path),
@@ -209,45 +223,72 @@ async def upload_tiktok_video(
 async def create_fadein_video_from_image(
     request: Request,
     background_tasks: BackgroundTasks,
-    image_file: UploadFile = File(...),
+    image_file: UploadFile = File(None),
+    image_files: list[UploadFile] = File(None),
     duration: float = Form(DEFAULT_IMAGE_FADE_DURATION_SECONDS),
+    image_duration: float = Form(None),
     auth_token: str = Header(None, alias="X-Upload-Auth"),
 ):
     client_ip = request.client.host if request.client else "unknown"
     validate_secret_token(auth_token)
-    ensure_image_content_type(image_file.content_type)
+    
+    # Collect all images
+    all_images = []
+    if image_file:
+        all_images.append(image_file)
+    if image_files:
+        all_images.extend(image_files)
+        
+    if not all_images:
+        raise HTTPException(status_code=400, detail="No images provided.")
+
+    for img in all_images:
+        ensure_image_content_type(img.content_type)
 
     if duration <= 0 or duration > MAX_IMAGE_FADE_DURATION_SECONDS:
         raise HTTPException(
             status_code=400,
             detail=f"Duration must be between 0 and {MAX_IMAGE_FADE_DURATION_SECONDS} seconds.",
         )
+        
+    # Default image_duration to duration if not provided (backward compatibility logic)
+    # If multiple images, user might want faster slides, but if not specified, we use 'duration' 
+    # which was originally the total video length (approx) for 1 image.
+    final_image_duration = image_duration if image_duration is not None else duration
 
     temp_dir = tempfile.mkdtemp()
     try:
-        uploaded_basename = Path(image_file.filename or "image").name or "image"
-        image_path = Path(temp_dir) / uploaded_basename
-        with open(image_path, "wb") as buffer:
-            shutil.copyfileobj(image_file.file, buffer)
+        saved_image_paths = []
+        for i, img in enumerate(all_images):
+            uploaded_basename = Path(img.filename or f"image_{i}").name
+            image_path = Path(temp_dir) / f"{i}_{uploaded_basename}"
+            with open(image_path, "wb") as buffer:
+                shutil.copyfileobj(img.file, buffer)
+            enforce_file_size(image_path, MAX_IMAGE_BYTES, f"image_{i}")
+            saved_image_paths.append(image_path)
 
-        enforce_file_size(image_path, MAX_IMAGE_BYTES, "image")
-
-        video_path = Path(temp_dir) / f"{Path(uploaded_basename).stem or 'image'}_fadein.mp4"
+        video_path = Path(temp_dir) / "output_fadein.mp4"
         
-        # Check for audio.mp3 in the project root (assuming api.py is in project root)
-        # Adjust path if api.py is in a subdirectory, but based on file list it's in root.
+        # Check for audio.mp3 in the project root
         audio_path = Path("audio.mp3").resolve()
         if not audio_path.exists():
              audio_path = None
              
-        generate_fadein_video_with_ffmpeg(image_path, video_path, duration, audio_path=audio_path)
+        generate_fadein_video_with_ffmpeg(
+            saved_image_paths, 
+            video_path, 
+            fade_duration=duration, 
+            image_duration=final_image_duration, 
+            audio_path=audio_path
+        )
 
         background_tasks.add_task(cleanup_directory, temp_dir)
         logger.info(
-            "Generated fade-in video for %s from %s (%.2f seconds) at %s",
+            "Generated fade-in video for %s from %d images (fade: %.2fs, img_dur: %.2fs) at %s",
             client_ip,
-            image_file.filename,
+            len(saved_image_paths),
             duration,
+            final_image_duration,
             video_path,
         )
         return FileResponse(
@@ -262,14 +303,13 @@ async def create_fadein_video_from_image(
     except subprocess.CalledProcessError as exc:
         cleanup_directory(temp_dir)
         logger.exception(
-            "FFmpeg failed to create fade-in video from %s: %s",
-            image_file.filename,
+            "FFmpeg failed to create fade-in video: %s",
             exc.stderr or exc,
         )
         raise HTTPException(status_code=500, detail="Failed to render fade-in video.")
     except Exception as exc:
         cleanup_directory(temp_dir)
-        logger.exception("Failed to create fade-in video from %s: %s", image_file.filename, exc)
+        logger.exception("Failed to create fade-in video: %s", exc)
         raise HTTPException(status_code=500, detail=f"Failed to create fade-in video: {exc}")
 
 if __name__ == "__main__":
