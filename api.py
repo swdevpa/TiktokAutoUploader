@@ -263,9 +263,9 @@ async def create_fadein_video_from_image(
     background_tasks: BackgroundTasks,
     image_file: UploadFile = File(None),
     image_files: list[UploadFile] = File(None),
-    duration: float = Form(DEFAULT_IMAGE_FADE_DURATION_SECONDS),
+    duration: float = Form(0.0),
     image_duration: float = Form(None),
-    transition_duration: float = Form(1.0),
+    transition_duration: float = Form(0.3),
     auth_token: str = Header(None, alias="X-Upload-Auth"),
 ):
     client_ip = request.client.host if request.client else "unknown"
@@ -284,7 +284,7 @@ async def create_fadein_video_from_image(
     for img in all_images:
         ensure_image_content_type(img.content_type)
 
-    if duration <= 0 or duration > MAX_IMAGE_FADE_DURATION_SECONDS:
+    if duration < 0 or duration > MAX_IMAGE_FADE_DURATION_SECONDS:
         raise HTTPException(
             status_code=400,
             detail=f"Duration must be between 0 and {MAX_IMAGE_FADE_DURATION_SECONDS} seconds.",
