@@ -83,28 +83,41 @@ def cleanup_directory(path: str | Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
 
 
-def generate_fadein_video_with_ffmpeg(image_path: Path, output_path: Path, duration: float) -> None:
+def generate_fadein_video_with_ffmpeg(image_path: Path, output_path: Path, duration: float, audio_path: Path | None = None) -> None:
     fade_filter = f"format=yuv420p,fade=t=in:st=0:d={duration},fps=24,scale=ceil(iw/2)*2:ceil(ih/2)*2"
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-loop",
-        "1",
-        "-i",
-        str(image_path),
-        "-vf",
-        fade_filter,
-        "-t",
-        str(duration),
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        "-an",
-        "-threads",
-        "2",
+    
+    cmd = ["ffmpeg", "-y"]
+    
+    # Input 0: Image
+    cmd.extend(["-loop", "1", "-i", str(image_path)])
+    
+    # Input 1: Audio (optional)
+    if audio_path:
+        # -stream_loop -1 makes the audio loop indefinitely
+        cmd.extend(["-stream_loop", "-1", "-i", str(audio_path)])
+    
+    cmd.extend([
+        "-vf", fade_filter,
+        "-t", str(duration),
+        "-c:v", "libx264",
+        "-preset", "medium",
+    ])
+    
+    if audio_path:
+        cmd.extend([
+            "-c:a", "aac",
+            "-map", "0:v",
+            "-map", "1:a",
+            "-shortest" # Ensure video stops when the shortest stream ends (though -t handles duration)
+        ])
+    else:
+        cmd.append("-an")
+        
+    cmd.extend([
+        "-threads", "2",
         str(output_path),
-    ]
+    ])
+    
     subprocess.run(cmd, check=True, capture_output=True, text=True)
 
 @app.post("/upload")
@@ -220,7 +233,14 @@ async def create_fadein_video_from_image(
         enforce_file_size(image_path, MAX_IMAGE_BYTES, "image")
 
         video_path = Path(temp_dir) / f"{Path(uploaded_basename).stem or 'image'}_fadein.mp4"
-        generate_fadein_video_with_ffmpeg(image_path, video_path, duration)
+        
+        # Check for audio.mp3 in the project root (assuming api.py is in project root)
+        # Adjust path if api.py is in a subdirectory, but based on file list it's in root.
+        audio_path = Path("audio.mp3").resolve()
+        if not audio_path.exists():
+             audio_path = None
+             
+        generate_fadein_video_with_ffmpeg(image_path, video_path, duration, audio_path=audio_path)
 
         background_tasks.add_task(cleanup_directory, temp_dir)
         logger.info(
