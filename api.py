@@ -83,7 +83,7 @@ def cleanup_directory(path: str | Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
 
 
-def generate_fadein_video_with_ffmpeg(image_paths: list[Path], output_path: Path, fade_duration: float, image_duration: float, audio_path: Path | None = None) -> None:
+def generate_fadein_video_with_ffmpeg(image_paths: list[Path], output_path: Path, fade_duration: float, image_duration: float, transition_duration: float = 1.0, audio_path: Path | None = None) -> None:
     # Prepare inputs
     inputs = []
     filter_complex_parts = []
@@ -92,16 +92,54 @@ def generate_fadein_video_with_ffmpeg(image_paths: list[Path], output_path: Path
     target_w = 1080
     target_h = 1920
     
+    # 1. Prepare inputs and scale them
     for i, img_path in enumerate(image_paths):
+        # Loop each image. Duration needs to be enough to cover transition overlap.
+        # For xfade, we don't strictly need to loop if we set -t, but -loop 1 -t is safer.
         inputs.extend(["-loop", "1", "-t", str(image_duration), "-i", str(img_path)])
-        # Scale and setsar to ensure consistency
+        
+        # Scale and setsar
         filter_complex_parts.append(f"[{i}:v]scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}];")
     
-    # Concat
-    concat_inputs = "".join([f"[v{i}]" for i in range(len(image_paths))])
-    filter_complex_parts.append(f"{concat_inputs}concat=n={len(image_paths)}:v=1:a=0[v_concat];")
-    
-    # Apply Fade In to the concatenated video
+    # 2. Apply transitions (xfade) if more than 1 image
+    if len(image_paths) > 1:
+        # Chain xfades
+        # [v0][v1]xfade=transition=fade:duration=1:offset=2[v01];
+        # [v01][v2]xfade=transition=fade:duration=1:offset=4[v012];
+        
+        last_stream = "[v0]"
+        current_offset = 0.0
+        
+        for i in range(1, len(image_paths)):
+            next_stream = f"[v{i}]"
+            out_stream = f"[v_x{i}]" if i < len(image_paths) - 1 else "[v_concat]"
+            
+            # Offset calculation:
+            # The previous image displays for `image_duration`.
+            # The transition starts at `image_duration - transition_duration` relative to the previous image start.
+            # But wait, xfade offset is absolute time.
+            # Start of img 0: 0
+            # Start of img 1 (transition start): image_duration - transition_duration
+            # Start of img 2: (image_duration - transition_duration) + (image_duration - transition_duration) ...
+            
+            # Actually, let's trace:
+            # Img 0 starts at 0. Ends at image_duration.
+            # Img 1 starts fading in at `image_duration - transition_duration`.
+            # So offset for first transition is `image_duration - transition_duration`.
+            # The resulting stream [v01] has duration: `image_duration + image_duration - transition_duration`.
+            # The next transition should start at `(image_duration - transition_duration) + (image_duration - transition_duration)`.
+            
+            offset = i * (image_duration - transition_duration)
+            
+            filter_complex_parts.append(f"{last_stream}{next_stream}xfade=transition=fade:duration={transition_duration}:offset={offset}{out_stream};")
+            last_stream = out_stream
+    else:
+        # Single image case, just map v0 to v_concat
+        filter_complex_parts.append("[v0]copy[v_concat];")
+
+    # 3. Apply initial Fade In to the result
+    # Note: If we have transitions, the video starts with Img 0. We want to fade THAT in from black.
+    # We can just apply the fade filter to the final output.
     filter_complex_parts.append(f"[v_concat]format=yuv420p,fade=t=in:st=0:d={fade_duration},fps=30[v_final]")
     
     filter_complex = "".join(filter_complex_parts)
@@ -109,7 +147,7 @@ def generate_fadein_video_with_ffmpeg(image_paths: list[Path], output_path: Path
     cmd = ["ffmpeg", "-y"]
     cmd.extend(inputs)
     
-    # Audio input (index = len(image_paths))
+    # Audio input
     if audio_path:
         cmd.extend(["-stream_loop", "-1", "-i", str(audio_path)])
     
@@ -227,6 +265,7 @@ async def create_fadein_video_from_image(
     image_files: list[UploadFile] = File(None),
     duration: float = Form(DEFAULT_IMAGE_FADE_DURATION_SECONDS),
     image_duration: float = Form(None),
+    transition_duration: float = Form(1.0),
     auth_token: str = Header(None, alias="X-Upload-Auth"),
 ):
     client_ip = request.client.host if request.client else "unknown"
@@ -256,6 +295,14 @@ async def create_fadein_video_from_image(
     # which was originally the total video length (approx) for 1 image.
     final_image_duration = image_duration if image_duration is not None else duration
 
+    # Validate transition duration
+    if len(all_images) > 1:
+        if transition_duration >= final_image_duration:
+             raise HTTPException(
+                status_code=400,
+                detail=f"Transition duration ({transition_duration}s) must be less than image duration ({final_image_duration}s).",
+            )
+
     temp_dir = tempfile.mkdtemp()
     try:
         saved_image_paths = []
@@ -278,7 +325,8 @@ async def create_fadein_video_from_image(
             saved_image_paths, 
             video_path, 
             fade_duration=duration, 
-            image_duration=final_image_duration, 
+            image_duration=final_image_duration,
+            transition_duration=transition_duration,
             audio_path=audio_path
         )
 
