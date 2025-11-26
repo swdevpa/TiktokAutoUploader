@@ -12,14 +12,16 @@ This project provides a FastAPI-based API to automate the uploading of videos to
     *   [Node.js and Playwright Setup](#nodejs-and-playwright-setup)
     *   [Systemd Service Configuration](#systemd-service-configuration)
     *   [Reinstalling & Updating](#reinstalling--updating)
-4.  [API Usage](#api-usage)
+4.  [GUI Usage](#gui-usage)
+5.  [CLI Usage](#cli-usage)
+6.  [API Usage](#api-usage)
     *   [Endpoint](#endpoint)
     *   [Request Parameters](#request-parameters)
     *   [Example cURL Command](#example-curl-command)
     *   [Image Fade-In Endpoint](#image-fade-in-endpoint)
-5.  [Troubleshooting](#troubleshooting)
-6.  [Project Structure](#project-structure)
-7.  [Security Notes](#security-notes)
+7.  [Troubleshooting](#troubleshooting)
+8.  [Project Structure](#project-structure)
+9.  [Security Notes](#security-notes)
 
 ## 1. Features
 
@@ -31,6 +33,9 @@ This project provides a FastAPI-based API to automate the uploading of videos to
 *   **Interaction Settings**: Controls comments, duets, and stitches.
 *   **Branded Content & AI Labeling**: Options for branded content and AI-generated content labels.
 *   **Image Fade-In Videos**: Converts single images into short fade-in MP4 clips through a dedicated endpoint for thumbnails or preview reels.
+*   **YouTube Download**: Directly download and upload videos from YouTube URLs.
+*   **Desktop GUI**: A user-friendly graphical interface for managing uploads and users.
+*   **CLI Support**: Command-line interface for scripting and headless operations.
 
 ## 2. Prerequisites
 
@@ -42,6 +47,7 @@ Before you begin, ensure your server (e.g., Hetzner VPS running Ubuntu/Debian) h
 *   **git**: For cloning the repository.
 *   **ffmpeg**: For video processing.
 *   **Systemd**: For running the API as a background service.
+*   **python3-tk**: Required for the GUI (on Linux).
 
 ## 3. Installation
 
@@ -241,7 +247,45 @@ If you delete the `.venv` folder or need to pull a fresh version of the code, fo
 
 If the command above succeeds and the journal no longer shows `ModuleNotFoundError`, the service is running from the rebuilt venv with all dependencies in place. Remember to keep `/etc/tiktok-uploader-api.env` populated with your `UPLOAD_SECRET` and to keep the `PLAYWRIGHT_BROWSERS_PATH` environment variable pointed to `/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers`.
 
-## 4. API Usage
+## 4. GUI Usage
+ 
+ The project includes a Tkinter-based GUI for easy management.
+ 
+ 1.  **Run the GUI**:
+     ```bash
+     python3 gui.py
+     ```
+ 
+ 2.  **Features**:
+     *   **Upload Tab**: Select user, video (local or YouTube URL), caption, and scheduling options.
+     *   **Users Tab**: Add or remove TikTok users (login via browser).
+     *   **Videos Tab**: View available videos in the `VideosDirPath`.
+ 
+ ## 5. CLI Usage
+ 
+ The CLI allows for headless operations and scripting.
+ 
+ 1.  **Login**:
+     ```bash
+     python3 cli.py login -n <username>
+     ```
+ 
+ 2.  **Upload**:
+     ```bash
+     python3 cli.py upload -u <username> -v <video_filename> -t "Caption"
+     ```
+     Or using a YouTube URL:
+     ```bash
+     python3 cli.py upload -u <username> -yt <youtube_url> -t "Caption"
+     ```
+ 
+ 3.  **List Resources**:
+     ```bash
+     python3 cli.py show -u  # List users
+     python3 cli.py show -v  # List videos
+     ```
+ 
+ ## 6. API Usage
 
 The API exposes a single endpoint for uploading videos.
 
@@ -288,33 +332,46 @@ curl -X POST "http://5.161.110.4:8000/upload" \
   -F "ai_label=0"
 ```
 
-### Image Fade-In Endpoint
+### Image Slideshow / Fade-In Endpoint
+ 
+ `POST http://your_server_ip:8000/fadein-from-image`
+ 
+ Use this endpoint to create a video from one or more images. It supports an initial fade-in from black and smooth crossfade transitions between multiple images. It returns an MP4 file.
+ 
+ #### Request Parameters
+ 
+ *   `image_file` (File): Single source image (for backward compatibility).
+ *   `image_files` (File list): Multiple source images for a slideshow. You can pass this field multiple times (e.g., `-F "image_files=@img1.jpg" -F "image_files=@img2.jpg"`).
+ *   `duration` (Float, optional, default: `0.0`): **Initial fade-in duration** in seconds. Set to `0` to disable the start fade-in.
+ *   `image_duration` (Float, optional): Duration in seconds for each image to be displayed. **Required if `duration` is 0**. Defaults to `duration` if not set.
+ *   `transition_duration` (Float, optional, default: `0.3`): Duration of the crossfade transition between images.
+ *   `X-Upload-Auth` (Header): Upload secret header (`X-Upload-Auth: <your secret>`).
+ 
+ #### Examples
+ 
+ **1. Single Image with Fade-In (Intro):**
+ ```bash
+ curl -X POST "http://5.161.110.4:8000/fadein-from-image" \
+   -H "X-Upload-Auth: <your secret>" \
+   -F "image_file=@/path/to/cover.jpg" \
+   -F "duration=5" \
+   -o intro.mp4
+ ```
+ 
+ **2. Slideshow without Initial Fade-In:**
+ To create a slideshow with 3-second images and 0.5-second transitions, but **no** fade-in from black at the start:
+ ```bash
+ curl -X POST "http://5.161.110.4:8000/fadein-from-image" \
+   -H "X-Upload-Auth: <your secret>" \
+   -F "image_files=@/path/to/image1.jpg" \
+   -F "image_files=@/path/to/image2.jpg" \
+   -F "duration=0" \
+   -F "image_duration=3" \
+   -F "transition_duration=0.5" \
+   -o slideshow.mp4
+ ```
 
-`POST http://your_server_ip:8000/fadein-from-image`
-
-Use this endpoint when you need a smooth 5-second fade from black to an image (for intro slides, thumbnails, or preview reels). It returns an MP4 file with the fade effect. The server calls the system `ffmpeg` binary to build the video at 24 fps, so make sure the `ffmpeg` package is installed and on the same `PATH` that the systemd service uses.
-
-#### Request Parameters
-
-*   `image_file` (File): The source image that should appear after the fade-in. Supported MIME types are JPEG, PNG, WEBP, GIF, SVG, BMP, and TIFF.
-*   `duration` (Float, optional, default: `5.0`): Fade duration in seconds. The endpoint enforces `0 < duration ≤ 60` unless you override the `MAX_IMAGE_FADE_DURATION_SECONDS` env var.
-*   `X-Upload-Auth` (Header): Same upload secret header as `/upload`. Every request must include `X-Upload-Auth: <your secret>`.
-
-The server also validates `MAX_IMAGE_UPLOAD_BYTES` (defaults to 10 MB) and pads the video to a 16-pixel-aligned resolution to satisfy encoder constraints.
-
-#### Example cURL Command
-
-```bash
-curl -X POST "http://5.161.110.4:8000/fadein-from-image" \
-  -H "accept: application/json" \
-  -H "Content-Type: multipart/form-data" \
-  -H "X-Upload-Auth: <your secret>" \
-  -F "image_file=@/Users/philipp/Documents/Projects/TiktokAutoUploader/temp_images/cover.jpg;type=image/jpeg" \
-  -F "duration=5"
-```
-Because the endpoint returns the generated MP4 itself, add `-o fadein.mp4` (or a different filename) to the command so `curl` writes the result to disk instead of dumping the binary into your terminal.
-
-## 5. Troubleshooting
+## 7. Troubleshooting
 
 *   **`ModuleNotFoundError: No module named 'fake_useragent'`**:
     This indicates that Python dependencies are not installed or not accessible to the user running the API. Ensure you ran `sudo -H -u tiktokapi python3 -m pip install -r requirements.txt` correctly.
@@ -343,7 +400,7 @@ Because the endpoint returns the generated MP4 itself, add `-o fadein.mp4` (or a
 *   **`Node.js 12.22.9. Playwright requires Node.js 14 or higher.`**:
     Your Node.js version is too old. Follow the Node.js installation steps in [Node.js and Playwright Setup](#nodejs-and-playwright-setup) to upgrade to a supported version (e.g., Node.js 18).
 
-## 6. Project Structure
+## 8. Project Structure
 
 ```
 /opt/TiktokAutoUploader/
@@ -376,7 +433,7 @@ Because the endpoint returns the generated MP4 itself, add `-o fadein.mp4` (or a
 ├── VideosDirPath/          # Directory for video files (e.g., upscaled videos)
 └── ... (other project files)
 
-## 7. Security Notes
+## 9. Security Notes
 
 ### Upload secret (`UPLOAD_SECRET`)
 
@@ -411,7 +468,7 @@ The `/upload` endpoint now rejects any request missing the shared secret in the 
 
 To rotate the secret later, update `/etc/tiktok-uploader-api.env`, repeat step 4, and push the new secret to the worker.
 
-## 8. Cloudflare Tunnel (empfohlen)
+## 10. Cloudflare Tunnel (empfohlen)
 
 Ein Cloudflare Tunnel erlaubt deinem Worker oder einem Browser, `https://your-domain/upload` zu erreichen, während du intern weiter `uvicorn` auf `http://localhost:8000` laufen lässt.
 
