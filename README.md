@@ -342,8 +342,9 @@ curl -X POST "http://5.161.110.4:8000/upload" \
  
  *   `image_file` (File): Single source image (for backward compatibility).
  *   `image_files` (File list): Multiple source images for a slideshow. You can pass this field multiple times (e.g., `-F "image_files=@img1.jpg" -F "image_files=@img2.jpg"`).
- *   `duration` (Float, optional, default: `0.0`): **Initial fade-in duration** in seconds. Set to `0` to disable the start fade-in.
- *   `image_duration` (Float, optional): Duration in seconds for each image to be displayed. **Required if `duration` is 0**. Defaults to `duration` if not set.
+ *   `duration` (Float, optional, default: `0.0`): **Legacy parameter** for backward compatibility. If `fade_duration` and `image_duration` are not set, this value is used for both.
+ *   `fade_duration` (Float, optional): **Initial fade-in duration** in seconds. Set to `0` to disable the start fade-in. If not provided, defaults to `duration`.
+ *   `image_duration` (Float, optional): Duration in seconds for each image to be displayed. If not provided, defaults to `duration`.
  *   `transition_duration` (Float, optional, default: `0.3`): Duration of the crossfade transition between images.
  *   `X-Upload-Auth` (Header): Upload secret header (`X-Upload-Auth: <your secret>`).
  
@@ -354,7 +355,7 @@ curl -X POST "http://5.161.110.4:8000/upload" \
  curl -X POST "http://5.161.110.4:8000/fadein-from-image" \
    -H "X-Upload-Auth: <your secret>" \
    -F "image_file=@/path/to/cover.jpg" \
-   -F "duration=5" \
+   -F "fade_duration=5" \
    -o intro.mp4
  ```
  
@@ -365,7 +366,7 @@ curl -X POST "http://5.161.110.4:8000/upload" \
    -H "X-Upload-Auth: <your secret>" \
    -F "image_files=@/path/to/image1.jpg" \
    -F "image_files=@/path/to/image2.jpg" \
-   -F "duration=0" \
+   -F "fade_duration=0" \
    -F "image_duration=3" \
    -F "transition_duration=0.5" \
    -o slideshow.mp4

@@ -264,6 +264,7 @@ async def create_fadein_video_from_image(
     image_file: UploadFile = File(None),
     image_files: list[UploadFile] = File(None),
     duration: float = Form(0.0),
+    fade_duration: float = Form(None),
     image_duration: float = Form(None),
     transition_duration: float = Form(0.3),
     auth_token: str = Header(None, alias="X-Upload-Auth"),
@@ -290,6 +291,9 @@ async def create_fadein_video_from_image(
             detail=f"Duration must be between 0 and {MAX_IMAGE_FADE_DURATION_SECONDS} seconds.",
         )
         
+    # Default fade_duration if not provided (backward compatibility)
+    final_fade_duration = fade_duration if fade_duration is not None else duration
+    
     # Default image_duration to duration if not provided (backward compatibility logic)
     # If multiple images, user might want faster slides, but if not specified, we use 'duration' 
     # which was originally the total video length (approx) for 1 image.
@@ -324,7 +328,7 @@ async def create_fadein_video_from_image(
         generate_fadein_video_with_ffmpeg(
             saved_image_paths, 
             video_path, 
-            fade_duration=duration, 
+            fade_duration=final_fade_duration, 
             image_duration=final_image_duration,
             transition_duration=transition_duration,
             audio_path=audio_path
@@ -335,7 +339,7 @@ async def create_fadein_video_from_image(
             "Generated fade-in video for %s from %d images (fade: %.2fs, img_dur: %.2fs) at %s",
             client_ip,
             len(saved_image_paths),
-            duration,
+            final_fade_duration,
             final_image_duration,
             video_path,
         )
