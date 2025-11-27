@@ -1,4 +1,5 @@
 import random
+import os
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -112,6 +113,9 @@ def prepare_video_for_upload(video_path: str) -> str:
 
     Returns the absolute path to the sanitized video that should be used for upload.
     """
+    if os.getenv("ENABLE_METADATA_SPOOFING", "false").lower() != "true":
+        return str(_resolve_source_path(video_path))
+
     source = _resolve_source_path(video_path)
     if not source.exists():
         raise MetadataProcessingError(f"Video source not found: {video_path}")
