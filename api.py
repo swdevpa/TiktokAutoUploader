@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 import logging
+from logging.handlers import RotatingFileHandler
 
 from fastapi import BackgroundTasks, FastAPI, UploadFile, File, Form, HTTPException, Header, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -15,8 +16,21 @@ from tiktok_uploader.Config import Config
 
 app = FastAPI()
 
-# Basic logging so we can audit uploads; Cloudflare Worker can’t set headers to warn us otherwise.
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+# Ensure logs directory exists
+log_dir = Path("logs")
+log_dir.mkdir(exist_ok=True)
+log_file = log_dir / "api.log"
+
+# Configure logging
+# We want to log to both console (stdout) and a file (logs/api.log)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=3)
+    ]
+)
 logger = logging.getLogger("api")
 
 # Keep upload limits small enough to reject malformed requests before they touch TikTok logic.
