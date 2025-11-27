@@ -291,6 +291,10 @@ async def upload_tiktok_video(
         # Call the existing upload function
         # The upload_video function needs to be adapted to accept the session_path directly
         # instead of a session_user string. This will be the next step.
+        
+        def log_status(msg):
+            logger.info(f"[TikTokUpload] {msg}")
+
         success = tiktok_upload_video(
             session_file_path=str(session_path), # Pass the path to the session file
             video=str(video_path),
@@ -304,7 +308,8 @@ async def upload_tiktok_video(
             branded_content_type=branded_content_type,
             ai_label=ai_label,
             proxy=proxy,
-            datacenter=datacenter
+            datacenter=datacenter,
+            status_callback=log_status
         )
 
         if success:
