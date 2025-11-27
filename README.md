@@ -346,6 +346,7 @@ curl -X POST "http://5.161.110.4:8000/upload" \
  *   `fade_duration` (Float, optional): **Initial fade-in duration** in seconds. Set to `0` to disable the start fade-in. If not provided, defaults to `duration`.
  *   `image_duration` (Float, optional): Duration in seconds for each image to be displayed. If not provided, defaults to `duration`.
  *   `transition_duration` (Float, optional, default: `0.3`): Duration of the crossfade transition between images.
+ *   `header_text` (String, optional): Text to be overlaid on the top center of the video. Useful for titles or headers (e.g., "POV: ...").
  *   `X-Upload-Auth` (Header): Upload secret header (`X-Upload-Auth: <your secret>`).
  
  #### Examples
@@ -370,6 +371,16 @@ curl -X POST "http://5.161.110.4:8000/upload" \
    -F "image_duration=3" \
    -F "transition_duration=0.5" \
    -o slideshow.mp4
+ ```
+
+ **3. Video with Header Text:**
+ To create a video with a text overlay at the top:
+ ```bash
+ curl -X POST "http://5.161.110.4:8000/fadein-from-image" \
+   -H "X-Upload-Auth: <your secret>" \
+   -F "image_file=@/path/to/image.jpg" \
+   -F "header_text=POV: You found this hack" \
+   -o video_with_text.mp4
  ```
 
 ## 7. Troubleshooting

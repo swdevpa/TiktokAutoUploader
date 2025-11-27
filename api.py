@@ -83,7 +83,7 @@ def cleanup_directory(path: str | Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
 
 
-def generate_fadein_video_with_ffmpeg(image_paths: list[Path], output_path: Path, fade_duration: float, image_duration: float, transition_duration: float = 1.0, audio_path: Path | None = None) -> None:
+def generate_fadein_video_with_ffmpeg(image_paths: list[Path], output_path: Path, fade_duration: float, image_duration: float, transition_duration: float = 1.0, audio_path: Path | None = None, header_text: str | None = None) -> None:
     # Prepare inputs
     inputs = []
     filter_complex_parts = []
@@ -140,7 +140,58 @@ def generate_fadein_video_with_ffmpeg(image_paths: list[Path], output_path: Path
     # 3. Apply initial Fade In to the result
     # Note: If we have transitions, the video starts with Img 0. We want to fade THAT in from black.
     # We can just apply the fade filter to the final output.
-    filter_complex_parts.append(f"[v_concat]format=yuv420p,fade=t=in:st=0:d={fade_duration},fps=30[v_final]")
+    
+    # If header_text is present, we need to chain the fade output to the drawtext filter.
+    fade_out_stream = "[v_faded]" if header_text else "[v_final]"
+    
+    filter_complex_parts.append(f"[v_concat]format=yuv420p,fade=t=in:st=0:d={fade_duration},fps=30{fade_out_stream}")
+    
+    # 4. Apply Header Text (if provided)
+    if header_text:
+        # Escape special characters for FFmpeg
+        # : -> \:
+        # ' -> ' (handled by python string formatting if wrapped in single quotes, but we need to be careful)
+        # Actually, for drawtext text='...', we need to escape single quotes and colons.
+        safe_text = header_text.replace(":", "\\:").replace("'", "'")
+        
+        # Note: We used [v_faded] as input, and output [v_final]
+        # Using a semicolon before this filter because the previous one didn't have it if we just appended it.
+        # Wait, the previous line `filter_complex_parts.append(...)` does NOT end with a semicolon.
+        # So we need to add a semicolon to the previous part OR handle it here.
+        # Let's adjust the previous append to include a semicolon if we are continuing.
+        
+        # Actually, let's just fix the previous line to NOT be the last one if header_text is there.
+        # The easiest way is to append the semicolon to the previous string in the list, or just ensure the logic flows.
+        
+        # Let's rewrite step 3 slightly to be cleaner.
+        pass # handled below in a cleaner way
+
+    # Refactoring Step 3 & 4 for cleaner flow:
+    # Remove the last append from above and do it here properly.
+    filter_complex_parts.pop() 
+    
+    if header_text:
+        filter_complex_parts.append(f"[v_concat]format=yuv420p,fade=t=in:st=0:d={fade_duration},fps=30[v_faded];")
+        
+        # Drawtext filter
+        # text='{safe_text}'
+        # fontcolor=white
+        # fontsize=48
+        # x=(w-text_w)/2
+        # y=h*0.15
+        # borderw=2
+        # bordercolor=black
+        # shadowx=2
+        # shadowy=2
+        
+        safe_text = header_text.replace(":", "\\:").replace("'", "'")
+        drawtext_filter = (
+            f"[v_faded]drawtext=text='{safe_text}':fontcolor=white:fontsize=48:"
+            "x=(w-text_w)/2:y=h*0.15:borderw=2:bordercolor=black:shadowx=2:shadowy=2[v_final]"
+        )
+        filter_complex_parts.append(drawtext_filter)
+    else:
+        filter_complex_parts.append(f"[v_concat]format=yuv420p,fade=t=in:st=0:d={fade_duration},fps=30[v_final]")
     
     filter_complex = "".join(filter_complex_parts)
     
@@ -267,6 +318,7 @@ async def create_fadein_video_from_image(
     fade_duration: float = Form(None),
     image_duration: float = Form(None),
     transition_duration: float = Form(0.3),
+    header_text: str = Form(None),
     auth_token: str = Header(None, alias="X-Upload-Auth"),
 ):
     client_ip = request.client.host if request.client else "unknown"
@@ -331,7 +383,8 @@ async def create_fadein_video_from_image(
             fade_duration=final_fade_duration, 
             image_duration=final_image_duration,
             transition_duration=transition_duration,
-            audio_path=audio_path
+            audio_path=audio_path,
+            header_text=header_text
         )
 
         background_tasks.add_task(cleanup_directory, temp_dir)
