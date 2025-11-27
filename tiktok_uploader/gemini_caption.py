@@ -23,7 +23,7 @@ else:
     _pdf_import_error = None
 
 
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.5-pro")
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-3-pro-preview")
 DEFAULT_TIMEOUT_SECONDS = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "300"))
 DEFAULT_MAX_PDF_CHARS = int(os.getenv("GEMINI_MAX_PDF_CHARS", "8000"))
 

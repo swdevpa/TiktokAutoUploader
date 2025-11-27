@@ -567,8 +567,8 @@ class TiktokUploaderGUI(tk.Tk):
         self.generate_caption_button.state(["!disabled"])
         self.caption_text.delete("1.0", tk.END)
         self.caption_text.insert(tk.END, suggestion.formatted)
-        self.caption_status_var.set("Caption generated with Gemini 2.5 Pro.")
-        self._report_status("Caption generated with Gemini 2.5 Pro.")
+        self.caption_status_var.set("Caption generated with Gemini 3 Pro Preview.")
+        self._report_status("Caption generated with Gemini 3 Pro Preview.")
         self._end_task()
 
     def _on_caption_generation_error(self, message: str):
