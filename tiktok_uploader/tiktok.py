@@ -402,6 +402,7 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
 				"msToken": mstoken,
 				"X-Bogus": tt_output["x-bogus"],
 				"_signature": tt_output["signature"],
+				"verifyFp": tt_output["verify_fp"],
 				# "X-TT-Params": tt_output["x-tt-params"],  # not needed rn.
 			}
 
