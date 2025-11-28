@@ -382,7 +382,7 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
 			# xbogus = subprocess_jsvmp(os.path.join(os.getcwd(), "tiktok_uploader", "./x-bogus.js"), user_agent, f"app_name=tiktok_web&channel=tiktok_web&device_platform=web&aid=1988&msToken={mstoken}")
 			# /tiktok/web/project/post/v1/
 			js_path = os.path.join(os.getcwd(), "tiktok_uploader", "tiktok-signature", "browser.js")
-			sig_url = f"https://www.tiktok.com/api/v1/web/project/post/?app_name=tiktok_web&channel=tiktok_web&device_platform=web&aid=1988&msToken={mstoken}"
+			sig_url = f"https://www.tiktok.com/tiktok/web/project/post/v1/?app_name=tiktok_web&channel=tiktok_web&device_platform=web&aid=1988&msToken={mstoken}"
 			signatures = subprocess_jsvmp(js_path, user_agent, sig_url)
 			if signatures is None:
 				_report_status("[-] Failed to generate upload signatures.")
