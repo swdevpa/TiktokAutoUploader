@@ -295,7 +295,7 @@ async def upload_tiktok_video(
         def log_status(msg):
             logger.info(f"[TikTokUpload] {msg}")
 
-        success = await tiktok_upload_video(
+        video_id = await tiktok_upload_video(
             session_file_path=str(session_path), # Pass the path to the session file
             video=str(video_path),
             title=caption,
@@ -312,9 +312,12 @@ async def upload_tiktok_video(
             status_callback=log_status
         )
 
-        if success:
-            logger.info("Upload completed for %s from %s", video_file.filename, client_ip)
-            return JSONResponse(status_code=200, content={"message": "Video uploaded successfully!"})
+        if video_id:
+            logger.info("Upload completed for %s from %s. Video ID: %s", video_file.filename, client_ip, video_id)
+            return JSONResponse(status_code=200, content={
+                "message": "Video uploaded successfully!",
+                "video_id": video_id
+            })
         else:
             raise HTTPException(status_code=500, detail="Failed to upload video to TikTok.")
 

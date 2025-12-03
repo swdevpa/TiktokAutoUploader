@@ -310,7 +310,9 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
             result = await resp.json()
             if result.get("status_code") == 0:
                 _report_status("Video Published Successfully!")
-                return True
+                # Return the video_id (Vid) which is the internal ID used for the upload
+                # The public item_id might be different, but Vid is what we have reliably here.
+                return upload_node["Vid"]
             else:
                 _report_status(f"[-] Publish Error: {result}")
                 return False
