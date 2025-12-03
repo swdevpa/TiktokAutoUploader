@@ -29,7 +29,7 @@ async def login(login_name: str):
     
     # Start browser in HEADED mode for user interaction
     async with StealthBrowser(headless=False) as browser:
-        await browser.page.goto(os.getenv("TIKTOK_LOGIN_URL", "https://www.tiktok.com/login"))
+        await browser.page.goto(os.getenv("TIKTOK_LOGIN_URL", "https://www.tiktok.com/login"), timeout=120000)
         
         print("Please log in to TikTok in the browser window.")
         print("Waiting for session cookies...")
@@ -79,7 +79,7 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
         _report_status("User successfully logged in (Cookies Loaded).")
 
         # Navigate to TikTok to set correct origin/referer/cookies
-        await browser.page.goto("https://www.tiktok.com/")
+        await browser.page.goto("https://www.tiktok.com/", timeout=120000)
         
         # Prepare Video
         try:
@@ -260,7 +260,7 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
             cookies = await browser.context.cookies()
             ms_token = next((c["value"] for c in cookies if c["name"] == "msToken"), None)
             if not ms_token:
-                await browser.page.goto("https://www.tiktok.com/")
+                await browser.page.goto("https://www.tiktok.com/", timeout=120000)
                 cookies = await browser.context.cookies()
                 ms_token = next((c["value"] for c in cookies if c["name"] == "msToken"), "dummy_token")
             
