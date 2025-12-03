@@ -574,8 +574,24 @@ async def scrape_single_video(task: ScrapeTask) -> ScrapeResult:
                         # Path 2: Universal Data
                         if not stats and "__DEFAULT_SCOPE__" in json_data:
                             try:
-                                stats = json_data["__DEFAULT_SCOPE__"]["webapp.video-detail"]["itemInfo"]["itemStruct"]["stats"]
-                            except KeyError:
+                                scope = json_data["__DEFAULT_SCOPE__"]
+                                logger.info(f"Scrape {task.id} - __DEFAULT_SCOPE__ keys: {list(scope.keys())}")
+                                
+                                if "webapp.video-detail" in scope:
+                                    detail = scope["webapp.video-detail"]
+                                    if "itemInfo" in detail:
+                                        item_info = detail["itemInfo"]
+                                        if "itemStruct" in item_info:
+                                            stats = item_info["itemStruct"].get("stats")
+                                            logger.info(f"Scrape {task.id} - Stats found in itemStruct: {stats}")
+                                        else:
+                                            logger.warning(f"Scrape {task.id} - itemStruct missing in itemInfo")
+                                    else:
+                                        logger.warning(f"Scrape {task.id} - itemInfo missing in webapp.video-detail")
+                                else:
+                                    logger.warning(f"Scrape {task.id} - webapp.video-detail missing in __DEFAULT_SCOPE__")
+                            except KeyError as e:
+                                logger.error(f"Scrape {task.id} - KeyError parsing Universal Data: {e}")
                                 pass
                         
                         if stats:
