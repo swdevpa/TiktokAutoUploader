@@ -320,8 +320,14 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
             result = await resp.json()
             if result.get("status_code") == 0:
                 _report_status("Video Published Successfully!")
-                # Return the video_id (Vid) which is the internal ID used for the upload
-                # The public item_id might be different, but Vid is what we have reliably here.
+                # Attempt to get the public video ID
+                public_id = result.get("aweme_id") or result.get("item_id")
+                if public_id:
+                    _report_status(f"Public Video ID found: {public_id}")
+                    return public_id
+                
+                # Fallback to Vid if public ID not found
+                _report_status(f"Warning: Public Video ID not found in response. Response keys: {list(result.keys())}")
                 return upload_node["Vid"]
             else:
                 _report_status(f"[-] Publish Error: {result}")

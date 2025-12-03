@@ -535,8 +535,8 @@ async def scrape_single_video(task: ScrapeTask) -> ScrapeResult:
                     except:
                         pass
 
-                    if "Video currently unavailable" in body_text:
-                        logger.info(f"Scrape {task.id} - 'Video currently unavailable' found in body text.")
+                    if "Video currently unavailable" in body_text or "Page not available" in body_text:
+                        logger.info(f"Scrape {task.id} - 'Video currently unavailable' or 'Page not available' found in body text.")
                         return ScrapeResult(id=task.id, status="video_removed")
                     
                     if "video_not_found" in final_url:
