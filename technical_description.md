@@ -31,7 +31,7 @@ Die API dient als zentraler Einstiegspunkt für externe Dienste (z.B. Auto-Worke
         *   `brand_organic_type`, `branded_content_type` (Int): Flags für Werbekennzeichnung.
         *   `ai_label` (Int): 1=AI Generated Content.
         *   `proxy` (String): Optionaler Proxy (`user:pass@host:port`).
-    *   **Response**: JSON `{"message": "Video uploaded successfully!"}` oder HTTP 500 bei Fehler.
+    *   **Response**: JSON `{"message": "Video uploaded successfully!", "video_id": "..."}` oder HTTP 500 bei Fehler.
 
     #### `POST /fadein-from-image`
     Generiert aus Bildern MP4-Videos mit Fade-In-Effekten und Text-Overlays mittels FFmpeg.
@@ -91,6 +91,7 @@ Implementiert den Reverse-Engineered Upload-Flow der TikTok Web-Version.
             *   Nutzt injizierte Skripte: `signer.js`, `webmssdk.js`, `xbogus.js`.
             *   Generiert `_signature`, `X-Bogus`, `verifyFp`.
         *   `POST /tiktok/web/project/post/v1/`: Veröffentlicht das Video.
+        *   **Return**: Gibt bei Erfolg die `video_id` (Vid) zurück.
 
 #### C. Metadata Spoofing (`metadata_spoofing.py`)
 Bereinigt und manipuliert Video-Metadaten vor dem Upload.

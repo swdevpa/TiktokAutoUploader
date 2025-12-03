@@ -287,6 +287,16 @@ The API expects a `multipart/form-data` request with the following fields:
 *   `branded_content_type` (Integer, optional, default: `0`): `0` for non-branded, `1` for branded.
 *   `ai_label` (Integer, optional, default: `0`): `0` for no AI label, `1` for AI-generated content label.
 
+### Response
+
+The API returns a JSON object upon success:
+```json
+{
+  "message": "Video uploaded successfully!",
+  "video_id": "v09044g40000c..."
+}
+```
+
 ### Example cURL Command
 
 Replace `5.161.110.4` with your server's IP address, and adjust file paths and parameters as needed.
