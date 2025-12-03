@@ -8,9 +8,10 @@ from playwright.async_api import async_playwright, Page, BrowserContext
 from .cookies import load_cookies_from_file, save_cookies_to_file
 
 class StealthBrowser:
-    def __init__(self, headless=True, proxy=None):
+    def __init__(self, headless=True, proxy=None, guest_mode=False):
         self.headless = headless
         self.proxy = proxy
+        self.guest_mode = guest_mode
         self.playwright = None
         self.browser = None
         self.context = None
@@ -250,6 +251,10 @@ class StealthBrowser:
         """)
 
     async def load_cookies(self, filename):
+        if self.guest_mode:
+            print("Guest mode enabled: Skipping cookie loading.")
+            return
+
         cookies = load_cookies_from_file(filename)
         if cookies:
             # Playwright expects 'sameSite' to be strictly typed or omitted if invalid

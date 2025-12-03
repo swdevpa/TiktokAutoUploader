@@ -370,6 +370,69 @@ curl -X POST "http://5.161.110.4:8000/upload" \
    -o video_with_text.mp4
  ```
 
+### Analytics Scraper Endpoint
+
+`POST http://your_server_ip:8000/api/v1/analytics/scrape`
+
+Use this endpoint to scrape public video metrics (views, likes, comments, shares) from TikTok without logging in (Guest Mode).
+
+#### Request Payload (JSON)
+
+```json
+{
+  "tasks": [
+    {
+      "id": "unique_task_id",
+      "video_url": "https://www.tiktok.com/@user/video/1234567890",
+      "proxy": "user:pass@host:port"
+    }
+  ]
+}
+```
+
+*   `id`: A unique identifier for the task (e.g., your database ID).
+*   `video_url`: The full URL of the TikTok video.
+*   `proxy`: (Optional but recommended) The proxy string to use for this specific scrape.
+
+#### Response Payload (JSON)
+
+```json
+{
+  "results": [
+    {
+      "id": "unique_task_id",
+      "status": "success",
+      "data": {
+        "play_count": 10500,
+        "digg_count": 1200,
+        "comment_count": 50,
+        "share_count": 10
+      }
+    }
+  ]
+}
+```
+
+*   `status`: `success`, `video_removed`, `processing`, `scrape_failed`, or `error`.
+*   `data`: Contains the metrics if status is `success`.
+
+#### Example cURL
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/analytics/scrape" \
+  -H "X-Upload-Auth: <your secret>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tasks": [
+      {
+        "id": "test_1",
+        "video_url": "https://www.tiktok.com/@user/video/...",
+        "proxy": "user:pass@host:port"
+      }
+    ]
+  }'
+```
+
 ## 7. Troubleshooting
 
 *   **`ModuleNotFoundError: No module named 'playwright'`**:

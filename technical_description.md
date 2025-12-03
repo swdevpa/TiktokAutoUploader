@@ -38,6 +38,12 @@ Die API dient als zentraler Einstiegspunkt für externe Dienste (z.B. Auto-Worke
     *   **Parameter**: `image_files` (List), `fade_duration`, `image_duration`, `transition_duration`, `header_text`.
     *   **Logik**: Nutzt FFmpeg `xfade` Filter für Übergänge und `drawtext` für Overlays.
 
+    #### `POST /api/v1/analytics/scrape`
+    Stateless Endpoint zum scrapen von Video-Metriken (Views, Likes, etc.) im Guest-Mode.
+    *   **Payload**: JSON Liste von Tasks (`video_url`, `proxy`).
+    *   **Logik**: Startet `StealthBrowser` im Guest-Mode (ohne Cookies), navigiert zur URL, extrahiert Daten aus `SIGI_STATE` JSON oder via CSS-Selektoren.
+    *   **Concurrency**: Limitiert durch `SCRAPE_CONCURRENCY_LIMIT` (Default: 5).
+
 ### 2.2 Command Line Interface (`cli.py`)
 Ermöglicht die manuelle Steuerung und Verwaltung via Terminal.
 *   **Dependencies**: `argparse`, `asyncio`.
@@ -53,6 +59,7 @@ Die kritischste Komponente für die Umgehung von Bot-Erkennung.
 *   **Klasse**: `StealthBrowser` (Context Manager).
 *   **Technologie**: Microsoft Playwright (Chromium).
 *   **Browser-Argumente**: `--disable-blink-features=AutomationControlled`, `--no-sandbox`, `--disable-infobars`.
+*   **Guest Mode**: Optionaler Modus (`guest_mode=True`), der das Laden von Cookies verhindert und eine saubere Session garantiert.
 *   **Proxy-Detection**: Fragt `http://ip-api.com/json` ab, um Zeitzone, Locale und Geolocation des Proxies zu ermitteln und den Browser-Kontext (`browser.new_context`) exakt darauf einzustellen.
 *   **Stealth-Injections (JavaScript)**:
     1.  **Navigator**: Überschreibt `navigator.webdriver` mit `undefined`.

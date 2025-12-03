@@ -13,6 +13,12 @@ from fastapi.responses import FileResponse, JSONResponse
 # Adjust this import path if your project structure is different
 from tiktok_uploader.tiktok import upload_video as tiktok_upload_video
 from tiktok_uploader.Config import Config
+from tiktok_uploader.StealthBrowser import StealthBrowser
+from pydantic import BaseModel
+from typing import List, Optional
+import asyncio
+import re
+import json
 
 app = FastAPI()
 
@@ -56,6 +62,34 @@ ALLOWED_IMAGE_CONTENT_TYPES = {
 DEFAULT_IMAGE_FADE_DURATION_SECONDS = float(os.getenv("DEFAULT_IMAGE_FADE_DURATION_SECONDS", 5.0))
 MAX_IMAGE_FADE_DURATION_SECONDS = float(os.getenv("MAX_IMAGE_FADE_DURATION_SECONDS", 60.0))
 UPLOAD_SECRET = os.getenv("UPLOAD_SECRET")
+SCRAPE_CONCURRENCY_LIMIT = int(os.getenv("SCRAPE_CONCURRENCY_LIMIT", 5))
+scrape_semaphore = asyncio.Semaphore(SCRAPE_CONCURRENCY_LIMIT)
+
+# --- Pydantic Models for Scraping ---
+
+class ScrapeTask(BaseModel):
+    id: str
+    video_url: str
+    proxy: Optional[str] = None
+
+class ScrapeRequest(BaseModel):
+    tasks: List[ScrapeTask]
+
+class ScrapeResultData(BaseModel):
+    play_count: int = 0
+    digg_count: int = 0
+    comment_count: int = 0
+    share_count: int = 0
+
+class ScrapeResult(BaseModel):
+    id: str
+    status: str  # success, video_removed, error, processing, scrape_failed
+    data: Optional[ScrapeResultData] = None
+
+class ScrapeResponse(BaseModel):
+    results: List[ScrapeResult]
+
+# ------------------------------------
 
 # Initialize Config (if needed by tiktok_upload_video, otherwise can be removed)
 # Ensure your Config class can be initialized without issues in an API context
@@ -438,6 +472,176 @@ async def create_fadein_video_from_image(
         cleanup_directory(temp_dir)
         logger.exception("Failed to create fade-in video: %s", exc)
         raise HTTPException(status_code=500, detail=f"Failed to create fade-in video: {exc}")
+
+
+async def parse_count(text: str) -> int:
+    """
+    Parses a count string like '1.2M', '10K', '1,234' into an integer.
+    """
+    if not text:
+        return 0
+    
+    text = text.strip().upper()
+    multiplier = 1
+    
+    if text.endswith("M"):
+        multiplier = 1_000_000
+        text = text[:-1]
+    elif text.endswith("K"):
+        multiplier = 1_000
+        text = text[:-1]
+    elif text.endswith("B"):
+        multiplier = 1_000_000_000
+        text = text[:-1]
+        
+    try:
+        # Remove commas and convert to float, then int
+        value = float(text.replace(",", ""))
+        return int(value * multiplier)
+    except ValueError:
+        return 0
+
+async def scrape_single_video(task: ScrapeTask) -> ScrapeResult:
+    async with scrape_semaphore:
+        logger.info(f"Starting scrape for {task.id}: {task.video_url}")
+        try:
+            async with StealthBrowser(headless=True, proxy=task.proxy, guest_mode=True) as browser:
+                # 1. Navigation
+                try:
+                    await browser.page.goto(task.video_url, wait_until="domcontentloaded", timeout=30000)
+                except Exception as e:
+                    logger.warning(f"Timeout or navigation error for {task.id}: {e}")
+                    return ScrapeResult(id=task.id, status="error")
+
+                # 2. Wait for key elements (success or failure)
+                try:
+                    # Wait for either the like count (success) or an error message container
+                    # We can't easily wait for "text", so we wait for the page to settle a bit or check specifically.
+                    # Let's wait for the like count with a timeout.
+                    await browser.page.wait_for_selector('[data-e2e="like-count"]', timeout=5000)
+                    is_success = True
+                except Exception:
+                    is_success = False
+
+                # 3. Status Detection (if success selector not found)
+                if not is_success:
+                    body_text = await browser.page.inner_text("body")
+                    final_url = browser.page.url
+                    logger.info(f"Scrape {task.id} - Success selector not found. Checking errors. URL: {final_url}")
+                    
+                    # Debug: Screenshot
+                    try:
+                        await browser.page.screenshot(path=f"debug_scrape_{task.id}.png")
+                    except:
+                        pass
+
+                    if "Video currently unavailable" in body_text:
+                        logger.info(f"Scrape {task.id} - 'Video currently unavailable' found in body text.")
+                        return ScrapeResult(id=task.id, status="video_removed")
+                    
+                    if "video_not_found" in final_url:
+                        return ScrapeResult(id=task.id, status="video_removed")
+                    
+                    if "captcha" in body_text.lower():
+                        logger.warning(f"Scrape {task.id} - Captcha detected in body text.")
+                        return ScrapeResult(id=task.id, status="scrape_failed")
+                        
+                    # If we are here, we loaded the page but didn't find the like count and didn't find an explicit error.
+                    # It might be a layout change or a different error.
+                    logger.warning(f"Scrape {task.id} - Unknown state. Body text snippet: {body_text[:200]}")
+                    return ScrapeResult(id=task.id, status="error")
+
+                # 4. Scraping Logic (Success)
+                # Try to extract from JSON data first (more reliable for views)
+                try:
+                    # Look for SIGI_STATE or __UNIVERSAL_DATA_FOR_REHYDRATION__
+                    json_data = await browser.page.evaluate("""() => {
+                        const el = document.getElementById('SIGI_STATE') || document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__');
+                        return el ? JSON.parse(el.textContent) : null;
+                    }""")
+
+                    if json_data:
+                        # Navigate JSON structure
+                        stats = None
+                        
+                        # Path 1: SIGI_STATE
+                        if "ItemModule" in json_data:
+                            for key, item in json_data["ItemModule"].items():
+                                if "stats" in item:
+                                    stats = item["stats"]
+                                    break
+                        
+                        # Path 2: Universal Data
+                        if not stats and "__DEFAULT_SCOPE__" in json_data:
+                            try:
+                                stats = json_data["__DEFAULT_SCOPE__"]["webapp.video-detail"]["itemInfo"]["itemStruct"]["stats"]
+                            except KeyError:
+                                pass
+                        
+                        if stats:
+                            return ScrapeResult(
+                                id=task.id,
+                                status="success",
+                                data=ScrapeResultData(
+                                    play_count=int(stats.get("playCount", 0)),
+                                    digg_count=int(stats.get("diggCount", 0)),
+                                    comment_count=int(stats.get("commentCount", 0)),
+                                    share_count=int(stats.get("shareCount", 0))
+                                )
+                            )
+                except Exception as e:
+                    logger.warning(f"JSON parsing failed for {task.id}: {e}")
+
+                # Fallback to Selectors
+                play_count = 0
+                digg_count = 0
+                comment_count = 0
+                share_count = 0
+                
+                # Likes
+                el_like = await browser.page.query_selector('[data-e2e="like-count"]')
+                if el_like:
+                    digg_count = await parse_count(await el_like.inner_text())
+                
+                # Comments
+                el_comment = await browser.page.query_selector('[data-e2e="comment-count"]')
+                if el_comment:
+                    comment_count = await parse_count(await el_comment.inner_text())
+                
+                # Shares
+                el_share = await browser.page.query_selector('[data-e2e="share-count"]')
+                if el_share:
+                    share_count = await parse_count(await el_share.inner_text())
+                
+                return ScrapeResult(
+                    id=task.id,
+                    status="success",
+                    data=ScrapeResultData(
+                        play_count=play_count, # Might be 0 if not found via JSON
+                        digg_count=digg_count,
+                        comment_count=comment_count,
+                        share_count=share_count
+                    )
+                )
+
+        except Exception as e:
+            logger.error(f"Scrape error for {task.id}: {e}")
+            return ScrapeResult(id=task.id, status="error")
+
+
+@app.post("/api/v1/analytics/scrape", response_model=ScrapeResponse)
+async def scrape_analytics(
+    request: ScrapeRequest,
+    auth_token: str = Header(None, alias="X-Upload-Auth"),
+):
+    validate_secret_token(auth_token)
+    
+    tasks = []
+    for task in request.tasks:
+        tasks.append(scrape_single_video(task))
+    
+    results = await asyncio.gather(*tasks)
+    return ScrapeResponse(results=results)
 
 if __name__ == "__main__":
     import uvicorn
