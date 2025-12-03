@@ -243,6 +243,12 @@ If you delete the `.venv` folder or need to pull a fresh version of the code, fo
      ```bash
      python3 cli.py upload -u <username> -yt <youtube_url> -t "Caption"
      ```
+
+     **Note on Proxies:**
+     The `-p` or `--proxy` argument supports authenticated proxies in the format:
+     `http://user:password@host:port`
+     or
+     `http://host:port` (for unauthenticated proxies).
  
  3.  **List Resources**:
      ```bash
@@ -361,6 +367,12 @@ curl -X POST "http://5.161.110.4:8000/upload" \
 
 *   **`fastapi` raises `RuntimeError: Form data requires `python-multipart` to be installed`**:
     FastAPI’s form parsing requires `python-multipart`. That dependency is now in `requirements.txt`.
+
+*   **`Page.goto: Timeout 120000ms exceeded`**:
+    This usually indicates a slow proxy connection or incorrect proxy credentials.
+    *   Ensure your proxy string follows the `http://user:pass@host:port` format.
+    *   Try a different proxy location or provider if the connection is too slow.
+    *   The script is optimized to wait only for the initial connection (`commit`), so persistent timeouts suggest a network block or failure.
 
 ## 8. Project Structure
 
