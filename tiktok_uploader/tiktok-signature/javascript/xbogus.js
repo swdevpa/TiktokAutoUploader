@@ -1,4 +1,4 @@
-var window = null;
+// var window = null;
 
 function _0x5cd844(e) {
     var b = {

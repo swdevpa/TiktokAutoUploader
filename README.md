@@ -2,6 +2,8 @@
 
 This project provides a FastAPI-based API to automate the uploading of videos to TikTok. It's designed to run on a server (like a Hetzner VPS) and allows external applications to trigger video uploads by sending the video file, a TikTok session cookie, and other metadata.
 
+**New in v2.0:** Unified Playwright Architecture. The project now uses Playwright (Python) for both login and uploads, ensuring maximum stealth and eliminating the need for a separate Node.js signature service.
+
 ## Table of Contents
 
 1.  [Features](#features)
@@ -9,7 +11,6 @@ This project provides a FastAPI-based API to automate the uploading of videos to
 3.  [Installation](#installation)
     *   [System Setup (Ubuntu/Debian)](#system-setup-ubuntudebian)
     *   [Project Setup](#project-setup)
-    *   [Node.js and Playwright Setup](#nodejs-and-playwright-setup)
     *   [Systemd Service Configuration](#systemd-service-configuration)
     *   [Reinstalling & Updating](#reinstalling--updating)
 4.  [GUI Usage](#gui-usage)
@@ -25,6 +26,7 @@ This project provides a FastAPI-based API to automate the uploading of videos to
 
 ## 1. Features
 
+*   **Stealth Uploads**: Uses Playwright with CDP patches to mimic a real browser, bypassing bot detection.
 *   **Video Upload**: Uploads video files to TikTok.
 *   **Session Management**: Uses provided TikTok session cookies (pickle files) for authentication.
 *   **Customizable Captions**: Allows setting custom video captions.
@@ -43,11 +45,12 @@ Before you begin, ensure your server (e.g., Hetzner VPS running Ubuntu/Debian) h
 
 *   **Python 3.8+**: The project is built with Python.
 *   **pip**: Python package installer.
-*   **Node.js and npm**: Required for Playwright's signature helper. Node.js 18 or higher is recommended.
 *   **git**: For cloning the repository.
 *   **ffmpeg**: For video processing.
 *   **Systemd**: For running the API as a background service.
 *   **python3-tk**: Required for the GUI (on Linux).
+
+*Note: Node.js is NO LONGER required.*
 
 ## 3. Installation
 
@@ -62,7 +65,7 @@ From the repository root execute:
 sudo ./scripts/install-ubuntu-api.sh
 ```
 
-The script performs the full workflow described below: it updates the system, installs Python/Node.js prerequisites, creates the `tiktokapi` user, installs the Python and Node dependencies (including Playwright Chromium), writes `/etc/tiktok-uploader-api.env` with an `UPLOAD_SECRET`, deploys the recommended `systemd` unit, and enables the service. It prints the new upload secret so you can copy it into your worker.
+The script performs the full workflow described below: it updates the system, installs Python prerequisites, creates the `tiktokapi` user, installs the Python dependencies (including Playwright Chromium), writes `/etc/tiktok-uploader-api.env` with an `UPLOAD_SECRET`, deploys the recommended `systemd` unit, and enables the service. It prints the new upload secret so you can copy it into your worker.
 
 Optional arguments let you customize file locations (see `--repo-dir`, `--env-file`, `--service-file`), seed your own `UPLOAD_SECRET`, or skip the systemd reload/enable step while still preparing the files.
 
@@ -111,30 +114,10 @@ You can still follow the manual steps below if you prefer to control each phase 
     sudo -H -u tiktokapi python3 -m pip install -r requirements.txt
     ```
 
-### Node.js and Playwright Setup
-
-The TikTok signature helper requires Node.js and Playwright browser binaries.
-
-1.  **Install Node.js (if not already installed or if an older version is present)**:
-    It's crucial to have a recent version of Node.js (18+).
+5.  **Install Playwright Browsers**:
+    The project now uses Playwright Python. You need to install the browser binaries.
     ```bash
-    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-    sudo apt-get install -y nodejs
-    ```
-    *Note: If you encounter issues with `libnode-dev` during Node.js installation, you might need to remove the old `libnode-dev` package first: `sudo apt remove libnode-dev`.*
-
-2.  **Install Playwright browser binaries**:
-    Navigate to the `tiktok-signature` directory and install Chromium.
-    ```bash
-    cd /opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature
-    sudo -H -u tiktokapi PLAYWRIGHT_BROWSERS_PATH=$(pwd)/.playwright-browsers npx playwright install chromium
-    ```
-    This command installs the browser binaries into a local directory (`.playwright-browsers`) within the `tiktok-signature` folder, ensuring they are accessible to the `tiktokapi` user.
-
-3.  **Verify Playwright installation (optional)**:
-    You can check if the browsers are installed correctly by listing the contents of the `.playwright-browsers` directory.
-    ```bash
-    ls -l /opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers
+    sudo -H -u tiktokapi python3 -m playwright install chromium
     ```
 
 ### Systemd Service Configuration
@@ -157,7 +140,6 @@ To ensure the API runs continuously and restarts automatically, set it up as a s
     Group=tiktokapi
     WorkingDirectory=/opt/TiktokAutoUploader
     EnvironmentFile=/etc/tiktok-uploader-api.env
-    Environment="PLAYWRIGHT_BROWSERS_PATH=/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers"
     ExecStart=/bin/bash -c "PATH=/opt/TiktokAutoUploader/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /opt/TiktokAutoUploader/.venv/bin/python -m uvicorn api:app --host 0.0.0.0 --port 8000"
     Restart=always
     RestartSec=10
@@ -166,7 +148,7 @@ To ensure the API runs continuously and restarts automatically, set it up as a s
     [Install]
     WantedBy=multi-user.target
     ```
-    *Note the `Environment="PLAYWRIGHT_BROWSERS_PATH=..."` line. This is crucial for the systemd service to find the Playwright browser binaries. Omit `StandardOutput`/`StandardError` from the unit so systemd keeps logging to the journal (the old `syslog` target is deprecated).*
+    *Note: The `PLAYWRIGHT_BROWSERS_PATH` environment variable is no longer strictly required if you installed browsers globally or in the default location for the user, but if you used a custom location, ensure it's set.*
 
 3.  **Reload systemd daemon**:
     ```bash
@@ -188,11 +170,6 @@ To ensure the API runs continuously and restarts automatically, set it up as a s
 6.  **Monitor logs for issues**:
     ```bash
     sudo journalctl -u tiktok-uploader-api -f
-    ```
-
-7.  **Install Python dependencies inside the virtualenv as `tiktokapi` before starting the service**:
-    ```bash
-    sudo -H -u tiktokapi /opt/TiktokAutoUploader/.venv/bin/python -m pip install -r /opt/TiktokAutoUploader/requirements.txt
     ```
 
 ### Reinstalling & Updating
@@ -224,9 +201,9 @@ If you delete the `.venv` folder or need to pull a fresh version of the code, fo
     sudo -H -u tiktokapi /opt/TiktokAutoUploader/.venv/bin/python -m pip install -r /opt/TiktokAutoUploader/requirements.txt
     ```
 
-5.  **Ensure the system has `ffmpeg` on the PATH**:
+5.  **Install Playwright Browsers**:
     ```bash
-    sudo apt install -y ffmpeg
+    sudo -H -u tiktokapi /opt/TiktokAutoUploader/.venv/bin/python -m playwright install chromium
     ```
 
 6.  **Reload systemd and restart the service**:
@@ -234,18 +211,6 @@ If you delete the `.venv` folder or need to pull a fresh version of the code, fo
     sudo systemctl daemon-reload
     sudo systemctl restart tiktok-uploader-api
     ```
-
-7.  **Verify the log for startup errors**:
-    ```bash
-    sudo journalctl -u tiktok-uploader-api.service -n 40 --no-pager
-    ```
-
-8.  **Double-check module availability** (MoviePy is still required by other parts of the project):
-    ```bash
-    sudo -H -u tiktokapi /opt/TiktokAutoUploader/.venv/bin/python -c 'import moviepy.editor; print(moviepy.editor.__file__)'
-    ```
-
-If the command above succeeds and the journal no longer shows `ModuleNotFoundError`, the service is running from the rebuilt venv with all dependencies in place. Remember to keep `/etc/tiktok-uploader-api.env` populated with your `UPLOAD_SECRET` and to keep the `PLAYWRIGHT_BROWSERS_PATH` environment variable pointed to `/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers`.
 
 ## 4. GUI Usage
  
@@ -385,32 +350,17 @@ curl -X POST "http://5.161.110.4:8000/upload" \
 
 ## 7. Troubleshooting
 
-*   **`ModuleNotFoundError: No module named 'fake_useragent'`**:
-    This indicates that Python dependencies are not installed or not accessible to the user running the API. Ensure you ran `sudo -H -u tiktokapi python3 -m pip install -r requirements.txt` correctly.
+*   **`ModuleNotFoundError: No module named 'playwright'`**:
+    Ensure you installed the requirements: `pip install -r requirements.txt`.
+
+*   **`playwright._impl._api_types.Error: Executable doesn't exist at ...`**:
+    You need to install the browser binaries: `playwright install chromium`.
 
 *   **`Error during upload: [Errno 2] No such file or directory: 'ffmpeg'`**:
-    `ffmpeg` is not installed or not in the system's PATH. Install it using `sudo apt install ffmpeg -y`. If it's installed but still not found, ensure the `PATH` environment variable in your systemd service file includes the directory where `ffmpeg` is located (e.g., `/usr/bin`).
+    `ffmpeg` is not installed or not in the system's PATH. Install it using `sudo apt install ffmpeg -y`.
 
 *   **`fastapi` raises `RuntimeError: Form data requires `python-multipart` to be installed`**:
-    FastAPI’s form parsing requires `python-multipart`. That dependency is now in `requirements.txt`, so reinstall from the repo (`sudo -H -u tiktokapi /opt/TiktokAutoUploader/.venv/bin/python -m pip install -r /opt/TiktokAutoUploader/requirements.txt`) if it still reports missing packages.
-
-*   **`Playwright browser binaries are missing. Run 'npx playwright install chromium' inside tiktok_uploader/tiktok-signature.`**:
-    This means Playwright cannot find the browser it needs. Ensure you have:
-    1.  Installed Node.js and npm.
-    2.  Navigated to `/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature`.
-    3.  Run `sudo -H -u tiktokapi PLAYWRIGHT_BROWSERS_PATH=$(pwd)/.playwright-browsers npx playwright install chromium`.
-    4.  Added `Environment="PLAYWRIGHT_BROWSERS_PATH=/opt/TiktokAutoUploader/tiktok_uploader/tiktok-signature/.playwright-browsers"` to your systemd service file.
-    5.  Reloaded and restarted the systemd service.
-
-*   **`Failed at step USER spawning /usr/bin/python3: No such process` (systemd error)**:
-    This usually means the `User` or `Group` specified in the systemd service file is incorrect or the user doesn't have permissions to execute the `ExecStart` command.
-    1.  Verify the `tiktokapi` user exists (`id tiktokapi`).
-    2.  Ensure `User=tiktokapi` and `Group=tiktokapi` are correctly set in `/etc/systemd/system/tiktok-uploader-api.service`.
-    3.  Confirm the `WorkingDirectory` is correct and owned by `tiktokapi`.
-    4.  Ensure the `ExecStart` command is correct and the `python3` executable path is valid (`which python3`).
-
-*   **`Node.js 12.22.9. Playwright requires Node.js 14 or higher.`**:
-    Your Node.js version is too old. Follow the Node.js installation steps in [Node.js and Playwright Setup](#nodejs-and-playwright-setup) to upgrade to a supported version (e.g., Node.js 18).
+    FastAPI’s form parsing requires `python-multipart`. That dependency is now in `requirements.txt`.
 
 ## 8. Project Structure
 
@@ -422,28 +372,23 @@ curl -X POST "http://5.161.110.4:8000/upload" \
 │   ├── __init__.py
 │   ├── basics.py
 │   ├── bot_utils.py
-│   ├── Browser.py          # Handles browser automation with Playwright
+│   ├── StealthBrowser.py   # NEW: Handles browser automation with Playwright & CDP Stealth
 │   ├── Config.py
 │   ├── cookies.py
 │   ├── gemini_caption.py
 │   ├── metadata_spoofing.py
-│   ├── tiktok.py           # Core TikTok upload logic
+│   ├── tiktok.py           # Core TikTok upload logic (Refactored)
 │   ├── Video.py
 │   ├── videotoolbox_upscale.py
-│   └── tiktok-signature/   # Node.js project for TikTok signature generation
-│       ├── browser.js
-│       ├── index.js
-│       ├── package-lock.json
-│       ├── package.json
-│       ├── utils.js
+│   └── tiktok-signature/   # JavaScript files for signature generation (injected into browser)
 │       ├── javascript/
 │       │   ├── signer.js
 │       │   ├── webmssdk.js
 │       │   └── xbogus.js
-│       └── .playwright-browsers/ # Playwright browser binaries installed here
 ├── CookiesDir/             # Directory to store TikTok session cookie files
 ├── VideosDirPath/          # Directory for video files (e.g., upscaled videos)
 └── ... (other project files)
+```
 
 ## 9. Security Notes
 

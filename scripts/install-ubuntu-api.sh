@@ -5,7 +5,6 @@ IFS=$'\n\t'
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly DEFAULT_REPO_DIR="$(realpath "$SCRIPT_DIR/..")"
-readonly NODE_SETUP_URL="https://deb.nodesource.com/setup_18.x"
 readonly APT_PACKAGES=(
   python3
   python3-pip
@@ -132,14 +131,6 @@ install_packages() {
   apt-get install -y "${APT_PACKAGES[@]}"
 }
 
-install_node() {
-  log "Installing Node.js 18 via the NodeSource setup script"
-  curl -fsSL "$NODE_SETUP_URL" | bash -
-  apt-get install -y nodejs
-  log "Node version: $(node -v)"
-  log "npm version: $(npm -v)"
-}
-
 ensure_user() {
   if id -u "$API_USER" >/dev/null 2>&1; then
     log "User $API_USER already exists"
@@ -174,17 +165,10 @@ install_python_deps() {
   chown -R "$API_USER:$API_USER" "$VENV_DIR"
 }
 
-install_node_deps() {
-  local signature_dir="$REPO_DIR/tiktok_uploader/tiktok-signature"
-  if [ ! -d "$signature_dir" ]; then
-    fatal "Missing signature helper directory at $signature_dir"
-  fi
-  log "Installing Node.js dependencies"
-  run_as_api "set -euo pipefail && cd '$signature_dir' && npm ci --no-audit --prefer-offline"
-  mkdir -p "$signature_dir/.playwright-browsers"
-  chown -R "$API_USER:$API_USER" "$signature_dir/.playwright-browsers"
+install_playwright_browsers() {
   log "Installing Playwright Chromium binaries"
-  run_as_api "set -euo pipefail && cd '$signature_dir' && PLAYWRIGHT_BROWSERS_PATH='$signature_dir/.playwright-browsers' npx playwright install chromium"
+  # We install browsers via the venv's python
+  run_as_api "$VENV_DIR/bin/python -m playwright install chromium"
 }
 
 ensure_env_file() {
@@ -210,7 +194,6 @@ write_service() {
   mkdir -p "$(dirname "$SERVICE_FILE")"
   local python_bin
   python_bin="$VENV_DIR/bin/python"
-  local playwright_path="$REPO_DIR/tiktok_uploader/tiktok-signature/.playwright-browsers"
   log "Writing systemd unit to $SERVICE_FILE"
   cat <<EOF >"$SERVICE_FILE"
 [Unit]
@@ -222,7 +205,6 @@ User=$API_USER
 Group=$API_USER
 WorkingDirectory=$REPO_DIR
 EnvironmentFile=$ENV_FILE
-Environment="PLAYWRIGHT_BROWSERS_PATH=$playwright_path"
 ExecStart=/bin/bash -c "PATH=$VENV_DIR/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin $python_bin -m uvicorn api:app --host 0.0.0.0 --port 8000"
 Restart=always
 RestartSec=10
@@ -260,13 +242,12 @@ main() {
   require_root
   ensure_repo
   install_packages
-  install_node
   ensure_user
   log "Ensuring repository files are owned by $API_USER"
   chown -R "$API_USER:$API_USER" "$REPO_DIR"
   setup_python_venv
   install_python_deps
-  install_node_deps
+  install_playwright_browsers
   ensure_env_file
   write_service
   deploy_systemd

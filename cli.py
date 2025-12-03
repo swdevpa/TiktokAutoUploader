@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
         try:
             tiktok.upload_video(
-                args.users,
+                f"tiktok_session-{args.users}",
                 args.video,
                 args.title,
                 args.schedule,
