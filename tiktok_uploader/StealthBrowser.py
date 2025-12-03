@@ -44,17 +44,40 @@ class StealthBrowser:
 
 
 
+        # Detect proxy settings (timezone, locale)
+        timezone_id = "America/New_York"
+        locale = "en-US"
+        geolocation = None
+        
+        if proxy_config:
+            print("Detecting proxy location...")
+            try:
+                proxy_info = await self._detect_proxy_settings(proxy_config)
+                if proxy_info:
+                    timezone_id = proxy_info.get("timezone", timezone_id)
+                    locale = proxy_info.get("locale", locale)
+                    if "lat" in proxy_info and "lon" in proxy_info:
+                        geolocation = {"latitude": proxy_info["lat"], "longitude": proxy_info["lon"]}
+                    print(f"Proxy detected: {timezone_id} | {locale}")
+            except Exception as e:
+                print(f"Failed to detect proxy settings: {e}")
+
         # Create context with stealth settings
-        self.context = await self.browser.new_context(
-            user_agent=self.user_agent,
-            viewport={"width": 1920, "height": 1080},
-            locale="en-US",
-            timezone_id="America/New_York", # Or match proxy
-            device_scale_factor=2,
-            has_touch=True,
-            is_mobile=False,
-            permissions=["geolocation"],
-        )
+        context_options = {
+            "user_agent": self.user_agent,
+            "viewport": {"width": 1920, "height": 1080},
+            "locale": locale,
+            "timezone_id": timezone_id,
+            "device_scale_factor": 2,
+            "has_touch": True,
+            "is_mobile": False,
+            "permissions": ["geolocation"],
+        }
+        
+        if geolocation:
+            context_options["geolocation"] = geolocation
+
+        self.context = await self.browser.new_context(**context_options)
 
         # Apply CDP Stealth Patches
         await self._apply_stealth(self.context)
@@ -94,6 +117,63 @@ class StealthBrowser:
             Object.defineProperty(navigator, 'plugins', {
                 get: () => [1, 2, 3, 4, 5]
             });
+        """)
+
+        # 5. WebGL Vendor/Renderer Spoofing
+        await context.add_init_script("""
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                // UNMASKED_VENDOR_WEBGL
+                if (parameter === 37445) {
+                    return 'Intel Inc.';
+                }
+                // UNMASKED_RENDERER_WEBGL
+                if (parameter === 37446) {
+                    return 'Intel Iris OpenGL Engine';
+                }
+                return getParameter(parameter);
+            };
+        """)
+
+        # 6. Canvas Noise Injection
+        await context.add_init_script("""
+            const toBlob = HTMLCanvasElement.prototype.toBlob;
+            const toDataURL = HTMLCanvasElement.prototype.toDataURL;
+            const getImageData = CanvasRenderingContext2D.prototype.getImageData;
+            
+            var noise = {
+                "r": Math.floor(Math.random() * 10) - 5,
+                "g": Math.floor(Math.random() * 10) - 5,
+                "b": Math.floor(Math.random() * 10) - 5,
+                "a": Math.floor(Math.random() * 10) - 5
+            };
+
+            // Override toDataURL
+            HTMLCanvasElement.prototype.toDataURL = function(type, encoderOptions) {
+                const context = this.getContext('2d');
+                if (context) {
+                    const shift = {
+                        'r': Math.floor(Math.random() * 10) - 5,
+                        'g': Math.floor(Math.random() * 10) - 5,
+                        'b': Math.floor(Math.random() * 10) - 5,
+                        'a': Math.floor(Math.random() * 10) - 5
+                    };
+                    const width = this.width;
+                    const height = this.height;
+                    const imageData = context.getImageData(0, 0, width, height);
+                    for (let i = 0; i < height; i++) {
+                        for (let j = 0; j < width; j++) {
+                            const n = i * (width * 4) + j * 4;
+                            imageData.data[n + 0] = imageData.data[n + 0] + shift.r;
+                            imageData.data[n + 1] = imageData.data[n + 1] + shift.g;
+                            imageData.data[n + 2] = imageData.data[n + 2] + shift.b;
+                            imageData.data[n + 3] = imageData.data[n + 3] + shift.a;
+                        }
+                    }
+                    context.putImageData(imageData, 0, 0);
+                }
+                return toDataURL.apply(this, arguments);
+            };
         """)
 
     async def _inject_signature_scripts(self):
@@ -204,3 +284,28 @@ class StealthBrowser:
         else:
             # Format: host:port or http://host:port
             return {"server": proxy_str}
+
+    async def _detect_proxy_settings(self, proxy_config):
+        """
+        Detects timezone and locale from the proxy IP.
+        """
+        # Use a separate request context for the lookup
+        request_context = await self.playwright.request.new_context(proxy=proxy_config)
+        try:
+            # ip-api.com is free and provides timezone/countryCode
+            response = await request_context.get("http://ip-api.com/json", timeout=10000)
+            if response.ok:
+                data = await response.json()
+                if data.get("status") == "success":
+                    return {
+                        "timezone": data.get("timezone"),
+                        "locale": "en-US", # Default to en-US, but could map countryCode to locale if needed
+                        "lat": data.get("lat"),
+                        "lon": data.get("lon"),
+                        "countryCode": data.get("countryCode")
+                    }
+        except Exception as e:
+            print(f"Proxy detection error: {e}")
+        finally:
+            await request_context.dispose()
+        return None

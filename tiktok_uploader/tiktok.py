@@ -174,7 +174,7 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                     headers = {
                         "Authorization": video_auth,
                         "Content-Type": "application/octet-stream",
-                        "Content-Disposition": 'attachment; filename="undefined"',
+                        "Content-Disposition": f'attachment; filename="{uuid.uuid4()}.mp4"',
                         "Content-Crc32": crc,
                     }
                     
