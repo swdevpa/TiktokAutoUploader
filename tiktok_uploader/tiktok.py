@@ -256,6 +256,22 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
             if schedule_time > 0:
                 payload["feature_common_info_list"][0]["schedule_time"] = schedule_time + int(time.time())
 
+            # TikTok expects brand flags inside the commerce toggle payload.
+            toggle_info = {}
+            if brand_organic_type:
+                toggle_info["brand_organic_type"] = brand_organic_type
+            if branded_content_type:
+                toggle_info["branded_content_type"] = branded_content_type
+            
+            payload["feature_common_info_list"][0]["tcm_params"] = json.dumps(
+                {"commerce_toggle_info": toggle_info if toggle_info else {}}
+            )
+
+            if ai_label:
+                aigc_payload = {"aigc_label_type": ai_label}
+                payload["feature_common_info_list"][0]["aigc_info"] = dict(aigc_payload)
+                payload["single_post_req_list"][0]["single_post_feature_info"]["aigc_info"] = dict(aigc_payload)
+
             # Generate Signature
             cookies = await browser.context.cookies()
             ms_token = next((c["value"] for c in cookies if c["name"] == "msToken"), None)
