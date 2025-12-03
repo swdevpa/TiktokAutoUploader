@@ -260,7 +260,7 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
             cookies = await browser.context.cookies()
             ms_token = next((c["value"] for c in cookies if c["name"] == "msToken"), None)
             if not ms_token:
-                await browser.page.goto("https://www.tiktok.com/", timeout=120000, wait_until='domcontentloaded')
+                await browser.page.goto("https://www.tiktok.com/", timeout=120000, wait_until='commit')
                 cookies = await browser.context.cookies()
                 ms_token = next((c["value"] for c in cookies if c["name"] == "msToken"), "dummy_token")
             

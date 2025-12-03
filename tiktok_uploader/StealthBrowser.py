@@ -34,16 +34,15 @@ class StealthBrowser:
 
         proxy_config = None
         if self.proxy:
-            # Parse proxy string if needed, Playwright expects:
-            # { "server": "http://myproxy.com:3128", "username": "usr", "password": "pwd" }
-            # Assuming self.proxy is "http://user:pass@host:port" or similar
-            proxy_config = {"server": self.proxy}
+            proxy_config = self._parse_proxy(self.proxy)
 
         self.browser = await self.playwright.chromium.launch(
             headless=self.headless,
             args=launch_args,
             proxy=proxy_config
         )
+
+
 
         # Create context with stealth settings
         self.context = await self.browser.new_context(
@@ -184,3 +183,24 @@ class StealthBrowser:
             await self.browser.close()
         if self.playwright:
             await self.playwright.stop()
+
+    def _parse_proxy(self, proxy_str):
+        if "@" in proxy_str:
+            # Format: user:pass@host:port or http://user:pass@host:port
+            if "://" in proxy_str:
+                protocol, rest = proxy_str.split("://", 1)
+            else:
+                protocol = "http"
+                rest = proxy_str
+            
+            auth, server = rest.split("@", 1)
+            username, password = auth.split(":", 1)
+            
+            return {
+                "server": f"{protocol}://{server}",
+                "username": username,
+                "password": password
+            }
+        else:
+            # Format: host:port or http://host:port
+            return {"server": proxy_str}
