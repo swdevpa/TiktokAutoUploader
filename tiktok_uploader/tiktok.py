@@ -322,12 +322,27 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                 _report_status("Video Published Successfully!")
                 # Attempt to get the public video ID
                 public_id = result.get("aweme_id") or result.get("item_id")
+                
+                # Check inside single_post_resp_list
+                if not public_id and "single_post_resp_list" in result:
+                    resp_list = result["single_post_resp_list"]
+                    if resp_list and isinstance(resp_list, list):
+                        # Try to find video_id, aweme_id, or item_id in the first item
+                        first_item = resp_list[0]
+                        public_id = first_item.get("video_id") or first_item.get("aweme_id") or first_item.get("item_id")
+                        if not public_id and "single_post_feature_info" in first_item:
+                             # Sometimes it might be nested further? Unlikely but possible.
+                             pass
+
                 if public_id:
                     _report_status(f"Public Video ID found: {public_id}")
                     return public_id
                 
                 # Fallback to Vid if public ID not found
                 _report_status(f"Warning: Public Video ID not found in response. Response keys: {list(result.keys())}")
+                if "single_post_resp_list" in result:
+                     _report_status(f"single_post_resp_list content: {result['single_post_resp_list']}")
+
                 return upload_node["Vid"]
             else:
                 _report_status(f"[-] Publish Error: {result}")
