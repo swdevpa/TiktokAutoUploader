@@ -161,7 +161,7 @@ install_python_deps() {
   fi
   log "Installing Python dependencies into $VENV_DIR"
   "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
-  "$VENV_DIR/bin/pip" install --no-cache-dir -r "$REPO_DIR/requirements.txt"
+  "$VENV_DIR/bin/pip" install --no-cache-dir --upgrade -r "$REPO_DIR/requirements.txt"
   chown -R "$API_USER:$API_USER" "$VENV_DIR"
 }
 
