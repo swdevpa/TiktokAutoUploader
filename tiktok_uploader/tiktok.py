@@ -79,7 +79,13 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
         _report_status("User successfully logged in (Cookies Loaded).")
 
         # Navigate to TikTok to set correct origin/referer/cookies
-        await browser.page.goto("https://www.tiktok.com/", timeout=120000, wait_until='commit')
+        try:
+            await browser.page.goto("https://www.tiktok.com/", timeout=120000, wait_until='commit')
+        except Exception as e:
+            error_msg = str(e)
+            if "ERR_TIMED_OUT" in error_msg or "Timeout" in error_msg:
+                raise RuntimeError(f"Proxy Connection Failed: The proxy {proxy} could not connect to TikTok. Please check your proxy settings.") from e
+            raise RuntimeError(f"Failed to load TikTok: {e}") from e
         
         # Prepare Video
         try:
@@ -276,7 +282,11 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
             cookies = await browser.context.cookies()
             ms_token = next((c["value"] for c in cookies if c["name"] == "msToken"), None)
             if not ms_token:
-                await browser.page.goto("https://www.tiktok.com/", timeout=120000, wait_until='commit')
+                try:
+                    await browser.page.goto("https://www.tiktok.com/", timeout=120000, wait_until='commit')
+                except Exception as e:
+                    print(f"Warning: Failed to refresh msToken: {e}")
+                    # We continue, hoping the existing cookies or context are enough, or it will fail later at signing.
                 cookies = await browser.context.cookies()
                 ms_token = next((c["value"] for c in cookies if c["name"] == "msToken"), "dummy_token")
             
