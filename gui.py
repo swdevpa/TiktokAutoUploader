@@ -363,7 +363,8 @@ class TiktokUploaderGUI(tk.Tk):
         user_name = simpledialog.askstring("Add User", "Enter a name for this user:")
         if user_name:
             try:
-                tiktok.login(user_name)
+                import asyncio
+                asyncio.run(tiktok.login(user_name))
             except RuntimeError as err:
                 messagebox.showerror("Login failed", str(err))
             else:
@@ -603,7 +604,8 @@ class TiktokUploaderGUI(tk.Tk):
             if not os.path.exists(session_file_path):
                 raise RuntimeError(f"Cookie-Datei für Nutzer {job['user']} nicht gefunden.")
 
-            success = tiktok.upload_video(
+            import asyncio
+            success = asyncio.run(tiktok.upload_video(
                 session_file_path,
                 video_path,
                 job["caption"],
@@ -618,7 +620,7 @@ class TiktokUploaderGUI(tk.Tk):
                 proxy=job["proxy"],
                 datacenter=job["datacenter"],
                 status_callback=self._report_status,
-            )
+            ))
         except RuntimeError as err:
             err_msg = str(err)
             self.after(0, lambda msg=err_msg: self._on_upload_error(msg))

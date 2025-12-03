@@ -45,7 +45,9 @@ if __name__ == "__main__":
         # Name of file to save the session id.
         login_name = args.name
         # Name of file to save the session id.
-        tiktok.login(login_name)
+        # Name of file to save the session id.
+        import asyncio
+        asyncio.run(tiktok.login(login_name))
 
     elif args.subcommand == "upload":
         # Obtain session id from the cookie name.
@@ -75,7 +77,8 @@ if __name__ == "__main__":
                 sys.exit(1)
 
         try:
-            tiktok.upload_video(
+            import asyncio
+            asyncio.run(tiktok.upload_video(
                 f"tiktok_session-{args.users}",
                 args.video,
                 args.title,
@@ -89,7 +92,7 @@ if __name__ == "__main__":
                 args.ailabel,
                 args.proxy or None,
                 args.datacenter or None,
-            )
+            ))
         except RuntimeError as exc:
             eprint(str(exc))
             sys.exit(1)

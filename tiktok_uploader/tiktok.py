@@ -79,7 +79,7 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
         _report_status("User successfully logged in (Cookies Loaded).")
 
         # Navigate to TikTok to set correct origin/referer/cookies
-        await browser.page.goto("https://www.tiktok.com/", timeout=120000, wait_until='domcontentloaded')
+        await browser.page.goto("https://www.tiktok.com/", timeout=120000, wait_until='commit')
         
         # Prepare Video
         try:
