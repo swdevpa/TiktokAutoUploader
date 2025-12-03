@@ -2,6 +2,8 @@ import json
 import time
 import os
 import asyncio
+import random
+import math
 from playwright.async_api import async_playwright, Page, BrowserContext
 from .cookies import load_cookies_from_file, save_cookies_to_file
 
@@ -176,6 +178,55 @@ class StealthBrowser:
             };
         """)
 
+        # 7. AudioContext Noise
+        await context.add_init_script("""
+            const getChannelData = AudioBuffer.prototype.getChannelData;
+            Object.defineProperty(AudioBuffer.prototype, 'getChannelData', {
+                value: function(channel) {
+                    const results = getChannelData.apply(this, [channel]);
+                    // Add tiny noise
+                    for (let i = 0; i < results.length; i += 100) {
+                        results[i] += (Math.random() * 0.0000001) - 0.00000005;
+                    }
+                    return results;
+                }
+            });
+        """)
+
+        # 8. Hardware Concurrency & Memory Spoofing
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
+            Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+        """)
+
+        # 9. Font Enumeration Masking (Basic)
+        await context.add_init_script("""
+            // Mask offsetWidth/offsetHeight for font detection
+            const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+            const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+            
+            Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+                get: function() {
+                    if (this.style.fontFamily) {
+                        // Add slight noise to dimensions if font is being measured
+                        return originalOffsetWidth.get.call(this) + (Math.random() > 0.95 ? 1 : 0);
+                    }
+                    return originalOffsetWidth.get.call(this);
+                }
+            });
+        """)
+
+        # 10. WebRTC Leak Protection (Disable)
+        await context.add_init_script("""
+            ['RTCPeerConnection', 'webkitRTCPeerConnection', 'mozRTCPeerConnection'].forEach(name => {
+                if (window[name]) {
+                    try {
+                        window[name] = undefined;
+                    } catch(e) {}
+                }
+            });
+        """)
+
     async def _inject_signature_scripts(self):
         # Load JS files from tiktok-signature/javascript
         base_path = os.path.join(os.path.dirname(__file__), "tiktok-signature", "javascript")
@@ -284,6 +335,84 @@ class StealthBrowser:
         else:
             # Format: host:port or http://host:port
             return {"server": proxy_str}
+
+    async def human_click(self, selector):
+        """
+        Moves mouse to element with a human-like curve and clicks.
+        """
+        if not self.page:
+            return
+            
+        element = await self.page.wait_for_selector(selector)
+        if not element:
+            return
+
+        box = await element.bounding_box()
+        if not box:
+            return
+
+        # Target point (randomized within the element)
+        target_x = box["x"] + box["width"] * (0.2 + 0.6 * random.random())
+        target_y = box["y"] + box["height"] * (0.2 + 0.6 * random.random())
+
+        # Start point (current mouse position) - Playwright doesn't expose this directly easily,
+        # so we assume 0,0 or track it. For now, let's just move from a random edge point if unknown.
+        start_x = random.randint(0, 1920)
+        start_y = random.randint(0, 1080)
+        
+        # Generate curve
+        steps = random.randint(25, 50)
+        points = self._bezier_curve(start_x, start_y, target_x, target_y, steps)
+        
+        for point in points:
+            await self.page.mouse.move(point[0], point[1])
+            # Tiny sleep between moves for variable speed
+            if random.random() > 0.8:
+                await asyncio.sleep(random.uniform(0.001, 0.005))
+
+        # Hesitate before click
+        await asyncio.sleep(random.uniform(0.05, 0.15))
+        await self.page.mouse.down()
+        await asyncio.sleep(random.uniform(0.03, 0.07))
+        await self.page.mouse.up()
+
+    async def human_type(self, selector, text):
+        """
+        Types text with random delays.
+        """
+        if not self.page:
+            return
+            
+        await self.human_click(selector)
+        
+        for char in text:
+            await self.page.keyboard.type(char)
+            # Random delay between keystrokes
+            await asyncio.sleep(random.uniform(0.05, 0.15))
+            
+            # Occasional longer pause
+            if random.random() > 0.9:
+                await asyncio.sleep(random.uniform(0.2, 0.5))
+
+    def _bezier_curve(self, x1, y1, x2, y2, steps):
+        """
+        Generates a cubic bezier curve points.
+        """
+        # Control points
+        cx1 = x1 + (x2 - x1) * random.uniform(0.2, 0.8)
+        cy1 = y1 + (y2 - y1) * random.uniform(0.2, 0.8) + random.uniform(-100, 100)
+        
+        cx2 = x1 + (x2 - x1) * random.uniform(0.2, 0.8)
+        cy2 = y1 + (y2 - y1) * random.uniform(0.2, 0.8) + random.uniform(-100, 100)
+        
+        points = []
+        for i in range(steps + 1):
+            t = i / steps
+            # Cubic Bezier formula
+            x = (1-t)**3 * x1 + 3*(1-t)**2 * t * cx1 + 3*(1-t) * t**2 * cx2 + t**3 * x2
+            y = (1-t)**3 * y1 + 3*(1-t)**2 * t * cy1 + 3*(1-t) * t**2 * cy2 + t**3 * y2
+            points.append((x, y))
+        return points
 
     async def _detect_proxy_settings(self, proxy_config):
         """

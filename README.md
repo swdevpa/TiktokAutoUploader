@@ -38,6 +38,12 @@ This project provides a FastAPI-based API to automate the uploading of videos to
 *   **YouTube Download**: Directly download and upload videos from YouTube URLs.
 *   **Desktop GUI**: A user-friendly graphical interface for managing uploads and users.
 *   **CLI Support**: Command-line interface for scripting and headless operations.
+*   **Advanced Stealth Architecture (v2.1)**:
+    *   **Dynamic Proxy Sync**: Automatically detects proxy location and synchronizes browser Timezone, Locale, and Geolocation to match.
+    *   **Fingerprinting Protection**: Spoofs WebGL Vendor (Intel Iris), Canvas noise, AudioContext noise, and Font enumeration.
+    *   **Hardware Spoofing**: Masks true CPU cores and RAM (reports 4 cores, 8GB RAM).
+    *   **WebRTC Protection**: Disables WebRTC to prevent IP leaks.
+    *   **Human-Like Behavior**: Capable of non-linear mouse movements and variable typing speeds (available for future UI-based features).
 
 ## 2. Prerequisites
 
