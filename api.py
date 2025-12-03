@@ -295,7 +295,7 @@ async def upload_tiktok_video(
         def log_status(msg):
             logger.info(f"[TikTokUpload] {msg}")
 
-        success = tiktok_upload_video(
+        success = await tiktok_upload_video(
             session_file_path=str(session_path), # Pass the path to the session file
             video=str(video_path),
             title=caption,

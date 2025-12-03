@@ -7,6 +7,7 @@ import uuid
 import zlib
 import random
 import string
+import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -18,7 +19,7 @@ from requests_auth_aws_sigv4 import AWSSigV4
 # Load environment variables
 load_dotenv()
 
-def login(login_name: str):
+async def login(login_name: str):
     """
     Logs in to TikTok using StealthBrowser and saves the session.
     """
@@ -27,8 +28,8 @@ def login(login_name: str):
     print(f"Logging in as {login_name}...")
     
     # Start browser in HEADED mode for user interaction
-    with StealthBrowser(headless=False) as browser:
-        browser.page.goto(os.getenv("TIKTOK_LOGIN_URL", "https://www.tiktok.com/login"))
+    async with StealthBrowser(headless=False) as browser:
+        await browser.page.goto(os.getenv("TIKTOK_LOGIN_URL", "https://www.tiktok.com/login"))
         
         print("Please log in to TikTok in the browser window.")
         print("Waiting for session cookies...")
@@ -36,19 +37,19 @@ def login(login_name: str):
         # Wait for sessionid cookie
         logged_in = False
         while not logged_in:
-            cookies = browser.context.cookies()
+            cookies = await browser.context.cookies()
             for cookie in cookies:
                 if cookie["name"] == "sessionid":
                     logged_in = True
                     break
-            time.sleep(1)
+            await asyncio.sleep(1)
         
         print("Login successful! Saving session...")
-        browser.save_cookies(session_file)
+        await browser.save_cookies(session_file)
         
     return True
 
-def upload_video(session_file_path, video, title, schedule_time=0, allow_comment=1, allow_duet=0, allow_stitch=0, visibility_type=0, brand_organic_type=0, branded_content_type=0, ai_label=0, proxy=None, datacenter=None, status_callback=None):
+async def upload_video(session_file_path, video, title, schedule_time=0, allow_comment=1, allow_duet=0, allow_stitch=0, visibility_type=0, brand_organic_type=0, branded_content_type=0, ai_label=0, proxy=None, datacenter=None, status_callback=None):
     """
     Uploads a video to TikTok using StealthBrowser (Playwright).
     """
@@ -64,13 +65,13 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
     _report_status("Initializing Stealth Browser...")
     
     # Initialize StealthBrowser (Headless by default, unless debugging)
-    with StealthBrowser(headless=True, proxy=proxy) as browser:
+    async with StealthBrowser(headless=True, proxy=proxy) as browser:
         
         # Load cookies
-        browser.load_cookies(session_file_path)
+        await browser.load_cookies(session_file_path)
         
         # Validate session
-        cookies = browser.context.cookies()
+        cookies = await browser.context.cookies()
         session_id = next((c["value"] for c in cookies if c["name"] == 'sessionid'), None)
         if not session_id:
             raise RuntimeError("No sessionid found. Please login first.")
@@ -78,7 +79,7 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
         _report_status("User successfully logged in (Cookies Loaded).")
 
         # Navigate to TikTok to set correct origin/referer/cookies
-        browser.page.goto("https://www.tiktok.com/")
+        await browser.page.goto("https://www.tiktok.com/")
         
         # Prepare Video
         try:
@@ -94,13 +95,13 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
             creation_id = _generate_random_string(21, True)
             project_url = f"https://www.tiktok.com/api/v1/web/project/create/?creation_id={creation_id}&type=1&aid=1988"
             
-            response = browser.page.request.post(project_url)
+            response = await browser.page.request.post(project_url)
             
             if not response.ok:
                 _report_status(f"[-] Project creation failed: {response.status} {response.status_text}")
                 return False
                 
-            project_payload = response.json()
+            project_payload = await response.json()
             project_id = project_payload.get("project", {}).get("project_id")
             
             if not project_id:
@@ -110,12 +111,12 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
             # 2. Get Upload Auth
             _report_status("Getting Upload Auth...")
             auth_url = "https://www.tiktok.com/api/v1/video/upload/auth/?aid=1988"
-            response = browser.page.request.get(auth_url)
+            response = await browser.page.request.get(auth_url)
             if not response.ok:
                 _report_status("[-] Failed to get upload auth")
                 return False
             
-            auth_data = response.json()
+            auth_data = await response.json()
             video_token = auth_data.get("video_token_v5")
             
             # 3. Upload to AWS (TikTok's S3)
@@ -138,13 +139,13 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
             aws_auth(prepped) 
             
             # Execute with Playwright
-            response = browser.page.request.get(apply_url, headers=dict(prepped.headers))
+            response = await browser.page.request.get(apply_url, headers=dict(prepped.headers))
             
             if not response.ok:
                 _report_status("[-] ApplyUploadInner failed")
                 return False
                 
-            upload_node = response.json()["Result"]["InnerUploadAddress"]["UploadNodes"][0]
+            upload_node = (await response.json())["Result"]["InnerUploadAddress"]["UploadNodes"][0]
             upload_host = upload_node["UploadHost"]
             store_uri = upload_node["StoreInfos"][0]["StoreUri"]
             video_auth = upload_node["StoreInfos"][0]["Auth"]
@@ -177,7 +178,7 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
                         "Content-Crc32": crc,
                     }
                     
-                    resp = browser.page.request.post(upload_chunk_url, headers=headers, data=chunk)
+                    resp = await browser.page.request.post(upload_chunk_url, headers=headers, data=chunk)
                     if not resp.ok:
                         _report_status(f"[-] Chunk {part_number} upload failed")
                         return False
@@ -193,7 +194,7 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
             }
             data_body = ",".join([f"{i + 1}:{crcs[i]}" for i in range(len(crcs))])
             
-            resp = browser.page.request.post(finish_url, headers=headers, data=data_body)
+            resp = await browser.page.request.post(finish_url, headers=headers, data=data_body)
             if not resp.ok:
                 _report_status("[-] Commit upload failed")
                 return False
@@ -206,7 +207,7 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
             prepped = req.prepare()
             aws_auth(prepped)
             
-            resp = browser.page.request.post(commit_inner_url, headers=dict(prepped.headers), data=data_inner)
+            resp = await browser.page.request.post(commit_inner_url, headers=dict(prepped.headers), data=data_inner)
             if not resp.ok:
                 _report_status("[-] CommitUploadInner failed")
                 return False
@@ -256,10 +257,12 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
                 payload["feature_common_info_list"][0]["schedule_time"] = schedule_time + int(time.time())
 
             # Generate Signature
-            ms_token = next((c["value"] for c in browser.context.cookies() if c["name"] == "msToken"), None)
+            cookies = await browser.context.cookies()
+            ms_token = next((c["value"] for c in cookies if c["name"] == "msToken"), None)
             if not ms_token:
-                browser.page.goto("https://www.tiktok.com/")
-                ms_token = next((c["value"] for c in browser.context.cookies() if c["name"] == "msToken"), "dummy_token")
+                await browser.page.goto("https://www.tiktok.com/")
+                cookies = await browser.context.cookies()
+                ms_token = next((c["value"] for c in cookies if c["name"] == "msToken"), "dummy_token")
             
             base_url = "https://www.tiktok.com/tiktok/web/project/post/v1/"
             params = {
@@ -273,7 +276,7 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
             query_params = "&".join([f"{k}={v}" for k, v in params.items()])
             url_to_sign = f"{base_url}?{query_params}"
             
-            sig_data = browser.get_signature(url_to_sign)
+            sig_data = await browser.get_signature(url_to_sign)
             if not sig_data:
                 _report_status("[-] Failed to generate signature")
                 return False
@@ -282,13 +285,13 @@ def upload_video(session_file_path, video, title, schedule_time=0, allow_comment
             params["_signature"] = sig_data["signature"]
             params["verifyFp"] = sig_data["verify_fp"]
             
-            resp = browser.page.request.post(base_url, params=params, data=payload)
+            resp = await browser.page.request.post(base_url, params=params, data=payload)
             
             if not resp.ok:
                 _report_status(f"[-] Publish failed: {resp.status}")
                 return False
                 
-            result = resp.json()
+            result = await resp.json()
             if result.get("status_code") == 0:
                 _report_status("Video Published Successfully!")
                 return True
@@ -336,5 +339,5 @@ def _crc32(content):
 
 if __name__ == "__main__":
     # Test login
-    # login("test_user")
+    # asyncio.run(login("test_user"))
     pass

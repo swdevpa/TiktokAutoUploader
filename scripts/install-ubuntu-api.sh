@@ -208,8 +208,6 @@ EnvironmentFile=$ENV_FILE
 ExecStart=/bin/bash -c "PATH=$VENV_DIR/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin $python_bin -m uvicorn api:app --host 0.0.0.0 --port 8000"
 Restart=always
 RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
 SyslogIdentifier=tiktok-uploader-api
 
 [Install]
