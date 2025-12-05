@@ -85,6 +85,7 @@ class ScrapeResult(BaseModel):
     id: str
     status: str  # success, video_removed, error, processing, scrape_failed
     data: Optional[ScrapeResultData] = None
+    error_message: Optional[str] = None
 
 class ScrapeResponse(BaseModel):
     results: List[ScrapeResult]
@@ -511,7 +512,7 @@ async def scrape_single_video(task: ScrapeTask) -> ScrapeResult:
                     await browser.page.goto(task.video_url, wait_until="domcontentloaded", timeout=30000)
                 except Exception as e:
                     logger.warning(f"Timeout or navigation error for {task.id}: {e}")
-                    return ScrapeResult(id=task.id, status="error")
+                    return ScrapeResult(id=task.id, status="error", error_message=str(e))
 
                 # 2. Wait for key elements (success or failure)
                 try:
@@ -537,19 +538,19 @@ async def scrape_single_video(task: ScrapeTask) -> ScrapeResult:
 
                     if "Video currently unavailable" in body_text or "Page not available" in body_text:
                         logger.info(f"Scrape {task.id} - 'Video currently unavailable' or 'Page not available' found in body text.")
-                        return ScrapeResult(id=task.id, status="video_removed")
+                        return ScrapeResult(id=task.id, status="video_removed", error_message="Video unavailable in body text")
                     
                     if "video_not_found" in final_url:
                         return ScrapeResult(id=task.id, status="video_removed")
                     
                     if "captcha" in body_text.lower():
                         logger.warning(f"Scrape {task.id} - Captcha detected in body text.")
-                        return ScrapeResult(id=task.id, status="scrape_failed")
+                        return ScrapeResult(id=task.id, status="scrape_failed", error_message="Captcha detected")
                         
                     # If we are here, we loaded the page but didn't find the like count and didn't find an explicit error.
                     # It might be a layout change or a different error.
                     logger.warning(f"Scrape {task.id} - Unknown state. Body text snippet: {body_text[:200]}")
-                    return ScrapeResult(id=task.id, status="error")
+                    return ScrapeResult(id=task.id, status="error", error_message=f"Unknown state: {body_text[:100]}")
 
                 # 4. Scraping Logic (Success)
                 # Try to extract from JSON data first (more reliable for views)
@@ -625,8 +626,8 @@ async def scrape_single_video(task: ScrapeTask) -> ScrapeResult:
                 )
 
         except Exception as e:
-            logger.error(f"Scrape error for {task.id}: {e}")
-            return ScrapeResult(id=task.id, status="error")
+            logger.exception(f"Scrape error for {task.id}: {e}")
+            return ScrapeResult(id=task.id, status="error", error_message=str(e))
 
 
 @app.post("/api/v1/analytics/scrape", response_model=ScrapeResponse)
