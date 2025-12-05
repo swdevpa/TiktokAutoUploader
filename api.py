@@ -515,13 +515,44 @@ async def scrape_single_video(task: ScrapeTask) -> ScrapeResult:
                     return ScrapeResult(id=task.id, status="error", error_message=str(e))
 
                 # 1.5 Handle Popups/Modals (Login, Keyboard Shortcuts, etc.)
+                # 1.5 Handle Popups/Modals (Login, TikTok Shop, Keyboard Shortcuts, etc.)
                 try:
-                    # Common selector for "X" close button on modals
-                    close_btn = await browser.page.wait_for_selector('[data-e2e="modal-close-inner-button"]', state="visible", timeout=4000)
+                    # 1. Try sending Escape key (often closes modals)
+                    await browser.page.keyboard.press("Escape")
+                    await asyncio.sleep(0.5)
+
+                    # 2. Common selector for "X" close button on modals
+                    close_btn = await browser.page.wait_for_selector('[data-e2e="modal-close-inner-button"]', state="visible", timeout=2000)
                     if close_btn:
                         logger.info(f"Scrape {task.id} - Found modal close button. Clicking...")
                         await close_btn.click()
                         await asyncio.sleep(1)
+                except Exception:
+                    pass
+
+                try:
+                    # 3. Generic "Close" / "Not now" buttons (for Shop, specific promos)
+                    # We look for buttons containing these texts regardless of case
+                    for text in ["Close", "Not now", "Skip", "Maybe later"]:
+                        try:
+                            btn = await browser.page.wait_for_selector(f'button:has-text("{text}")', state="visible", timeout=500)
+                            if btn:
+                                logger.info(f"Scrape {task.id} - Found button with text '{text}'. Clicking...")
+                                await btn.click()
+                                await asyncio.sleep(1)
+                                break
+                        except:
+                            continue
+                            
+                    # 4. Icon-based close buttons (often aria-label="Close")
+                    try:
+                        icon_btn = await browser.page.wait_for_selector('button[aria-label="Close"]', state="visible", timeout=500)
+                        if icon_btn:
+                            logger.info(f"Scrape {task.id} - Found button with aria-label='Close'. Clicking...")
+                            await icon_btn.click()
+                            await asyncio.sleep(1)
+                    except:
+                        pass
                 except Exception:
                     pass
 
