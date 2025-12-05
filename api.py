@@ -514,12 +514,33 @@ async def scrape_single_video(task: ScrapeTask) -> ScrapeResult:
                     logger.warning(f"Timeout or navigation error for {task.id}: {e}")
                     return ScrapeResult(id=task.id, status="error", error_message=str(e))
 
+                # 1.5 Handle Popups/Modals (Login, Keyboard Shortcuts, etc.)
+                try:
+                    # Common selector for "X" close button on modals
+                    close_btn = await browser.page.wait_for_selector('[data-e2e="modal-close-inner-button"]', state="visible", timeout=4000)
+                    if close_btn:
+                        logger.info(f"Scrape {task.id} - Found modal close button. Clicking...")
+                        await close_btn.click()
+                        await asyncio.sleep(1)
+                except Exception:
+                    pass
+
+                try:
+                    # "Continue as guest" button
+                    guest_btn = await browser.page.wait_for_selector('div:has-text("Continue as guest")', state="visible", timeout=2000)
+                    if guest_btn:
+                        logger.info(f"Scrape {task.id} - Found 'Continue as guest'. Clicking...")
+                        await guest_btn.click()
+                        await asyncio.sleep(1)
+                except Exception:
+                    pass
+
                 # 2. Wait for key elements (success or failure)
                 try:
                     # Wait for either the like count (success) or an error message container
                     # We can't easily wait for "text", so we wait for the page to settle a bit or check specifically.
                     # Let's wait for the like count with a timeout.
-                    await browser.page.wait_for_selector('[data-e2e="like-count"]', timeout=5000)
+                    await browser.page.wait_for_selector('[data-e2e="like-count"]', timeout=10000)
                     is_success = True
                 except Exception:
                     is_success = False
@@ -549,8 +570,8 @@ async def scrape_single_video(task: ScrapeTask) -> ScrapeResult:
                         
                     # If we are here, we loaded the page but didn't find the like count and didn't find an explicit error.
                     # It might be a layout change or a different error.
-                    logger.warning(f"Scrape {task.id} - Unknown state. Body text snippet: {body_text[:200]}")
-                    return ScrapeResult(id=task.id, status="error", error_message=f"Unknown state: {body_text[:100]}")
+                    logger.warning(f"Scrape {task.id} - Unknown state. URL: {final_url}. Body text snippet: {body_text[:200]}")
+                    return ScrapeResult(id=task.id, status="error", error_message=f"Unknown state: {body_text[:100]} ... URL: {final_url}")
 
                 # 4. Scraping Logic (Success)
                 # Try to extract from JSON data first (more reliable for views)
