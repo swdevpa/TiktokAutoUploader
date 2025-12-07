@@ -221,6 +221,11 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
             
             data_body = ",".join([f"{i + 1}:{crcs[i]}" for i in range(len(crcs))])
             
+            # DEBUG: Log payload for comparison
+            _report_status(f"[TikTokUpload] Commit Payload - URL: {finish_url}")
+            _report_status(f"[TikTokUpload] Commit Payload - Headers: {json.dumps(headers)}")
+            _report_status(f"[TikTokUpload] Commit Payload - Body: {data_body}")
+            
             resp = await browser.page.request.post(finish_url, headers=headers, data=data_body)
             if not resp.ok:
                 try:
