@@ -157,17 +157,24 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
             
             upload_node = apply_response_json["Result"]["InnerUploadAddress"]["UploadNodes"][0]
             upload_host = upload_node["UploadHost"]
-            store_uri = upload_node["StoreInfos"][0]["StoreUri"]
-            video_auth = upload_node["StoreInfos"][0]["Auth"]
+            
+            store_info = upload_node["StoreInfos"][0]
+            store_uri = store_info["StoreUri"]
+            video_auth = store_info["Auth"]
+            
+            # CRITICAL FIX: Use the UploadID provided by TikTok, do not generate a random one.
+            upload_id = store_info.get("UploadID")
+            if not upload_id:
+                 # Fallback if not present, though logs suggest it is.
+                 upload_id = str(uuid.uuid4())
+            
             session_key = upload_node["SessionKey"]
             
             # 4. Upload Chunks
-            _report_status("Uploading Video Chunks...")
+            _report_status(f"Uploading Video Chunks (UploadID: {upload_id})...")
             chunk_size = 5242880 # 5MB
-            upload_id = str(uuid.uuid4())
             
             crcs = []
-            server_crcs = [] # Store server-side checksums/etags if available
             
             with open(video_path, "rb") as f:
                 i = 0
@@ -195,13 +202,6 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                         _report_status(f"[-] Chunk {part_number} upload failed")
                         return False
 
-                    # DEBUG: Log headers to see if ETag is present
-                    _report_status(f"[TikTokUpload] Chunk {part_number} Response Headers: {resp.headers}")
-                    
-                    # Capture ETag if present (it might be the required checksum)
-                    if "etag" in resp.headers:
-                        server_crcs.append(resp.headers["etag"].strip('"'))
-                    
                     part_number += 1
                     i += len(chunk)
 
@@ -212,37 +212,15 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                 "Content-Type": "text/plain;charset=UTF-8",
             }
             
-            # Prepare different body formats for retry
-            formats_to_try = [
-                ("Default (Lowercase Hex)", lambda c: c),
-                ("Uppercase Hex", lambda c: c.upper()),
-                ("Decimal", lambda c: str(int(c, 16))),
-            ]
+            data_body = ",".join([f"{i + 1}:{crcs[i]}" for i in range(len(crcs))])
             
-            commit_success = False
-            for fmt_name, formatter in formats_to_try:
-                _report_status(f"Attempting commit with format: {fmt_name}")
+            resp = await browser.page.request.post(finish_url, headers=headers, data=data_body)
+            if not resp.ok:
                 try:
-                    data_body = ",".join([f"{i + 1}:{formatter(crcs[i])}" for i in range(len(crcs))])
-                    
-                    resp = await browser.page.request.post(finish_url, headers=headers, data=data_body)
-                    
-                    if resp.ok:
-                        commit_success = True
-                        _report_status(f"Commit successful with format: {fmt_name}")
-                        break
-                    else:
-                        error_text = await resp.text()
-                        _report_status(f"[-] Commit failed with {fmt_name}: {resp.status} {error_text}")
-                        # If it's a 5xx error, maybe we shouldn't retry immediately? 
-                        # But for 400 (InvalidMergeParts), retrying format is the goal.
-                        await asyncio.sleep(1) # Small delay between attempts
-                        
-                except Exception as e:
-                     _report_status(f"[-] Exception during commit attempt {fmt_name}: {e}")
-
-            if not commit_success:
-                _report_status("[-] All commit formats failed.")
+                    error_text = await resp.text()
+                except Exception:
+                    error_text = "Could not read error text"
+                _report_status(f"[-] Commit upload failed: {resp.status} {error_text}")
                 return False
 
             # 6. CommitUploadInner
