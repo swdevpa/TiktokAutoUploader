@@ -151,7 +151,11 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                 _report_status("[-] ApplyUploadInner failed")
                 return False
                 
-            upload_node = (await response.json())["Result"]["InnerUploadAddress"]["UploadNodes"][0]
+            apply_response_json = await response.json()
+            # DEBUG: Use print or logging to inspect the full response
+            print(f"[TikTokUpload] ApplyUploadInner Response: {json.dumps(apply_response_json)}") 
+            
+            upload_node = apply_response_json["Result"]["InnerUploadAddress"]["UploadNodes"][0]
             upload_host = upload_node["UploadHost"]
             store_uri = upload_node["StoreInfos"][0]["StoreUri"]
             video_auth = upload_node["StoreInfos"][0]["Auth"]
@@ -163,6 +167,8 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
             upload_id = str(uuid.uuid4())
             
             crcs = []
+            server_crcs = [] # Store server-side checksums/etags if available
+            
             with open(video_path, "rb") as f:
                 i = 0
                 part_number = 1
@@ -188,7 +194,14 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                     if not resp.ok:
                         _report_status(f"[-] Chunk {part_number} upload failed")
                         return False
-                        
+
+                    # DEBUG: Log headers to see if ETag is present
+                    print(f"[TikTokUpload] Chunk {part_number} Response Headers: {resp.headers}")
+                    
+                    # Capture ETag if present (it might be the required checksum)
+                    if "etag" in resp.headers:
+                        server_crcs.append(resp.headers["etag"].strip('"'))
+                    
                     part_number += 1
                     i += len(chunk)
 
