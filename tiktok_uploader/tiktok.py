@@ -168,6 +168,9 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                  # Fallback if not present, though logs suggest it is.
                  upload_id = str(uuid.uuid4())
             
+            # Extract UploadHeader (e.g., X-Logical-Part-Mode)
+            upload_headers = store_info.get("UploadHeader", {})
+            
             session_key = upload_node["SessionKey"]
             
             # 4. Upload Chunks
@@ -196,6 +199,8 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                         "Content-Disposition": f'attachment; filename="{uuid.uuid4()}.mp4"',
                         "Content-Crc32": crc,
                     }
+                    # Add dynamic headers from ApplyUploadInner
+                    headers.update(upload_headers)
                     
                     resp = await browser.page.request.post(upload_chunk_url, headers=headers, data=chunk)
                     if not resp.ok:
@@ -211,6 +216,8 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                 "Authorization": video_auth,
                 "Content-Type": "text/plain;charset=UTF-8",
             }
+            # Add dynamic headers from ApplyUploadInner
+            headers.update(upload_headers)
             
             data_body = ",".join([f"{i + 1}:{crcs[i]}" for i in range(len(crcs))])
             
