@@ -153,7 +153,7 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                 
             apply_response_json = await response.json()
             # DEBUG: Use print or logging to inspect the full response
-            print(f"[TikTokUpload] ApplyUploadInner Response: {json.dumps(apply_response_json)}") 
+            _report_status(f"[TikTokUpload] ApplyUploadInner Response: {json.dumps(apply_response_json)}") 
             
             upload_node = apply_response_json["Result"]["InnerUploadAddress"]["UploadNodes"][0]
             upload_host = upload_node["UploadHost"]
@@ -196,7 +196,7 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                         return False
 
                     # DEBUG: Log headers to see if ETag is present
-                    print(f"[TikTokUpload] Chunk {part_number} Response Headers: {resp.headers}")
+                    _report_status(f"[TikTokUpload] Chunk {part_number} Response Headers: {resp.headers}")
                     
                     # Capture ETag if present (it might be the required checksum)
                     if "etag" in resp.headers:
