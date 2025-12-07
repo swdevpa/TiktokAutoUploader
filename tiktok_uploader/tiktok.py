@@ -202,7 +202,11 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
             
             resp = await browser.page.request.post(finish_url, headers=headers, data=data_body)
             if not resp.ok:
-                _report_status("[-] Commit upload failed")
+                try:
+                    error_text = await resp.text()
+                except Exception:
+                    error_text = "Could not read error text"
+                _report_status(f"[-] Commit upload failed: {resp.status} {error_text}")
                 return False
 
             # 6. CommitUploadInner
