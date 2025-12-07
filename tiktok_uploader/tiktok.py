@@ -198,15 +198,38 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
                 "Authorization": video_auth,
                 "Content-Type": "text/plain;charset=UTF-8",
             }
-            data_body = ",".join([f"{i + 1}:{crcs[i]}" for i in range(len(crcs))])
             
-            resp = await browser.page.request.post(finish_url, headers=headers, data=data_body)
-            if not resp.ok:
+            # Prepare different body formats for retry
+            formats_to_try = [
+                ("Default (Lowercase Hex)", lambda c: c),
+                ("Uppercase Hex", lambda c: c.upper()),
+                ("Decimal", lambda c: str(int(c, 16))),
+            ]
+            
+            commit_success = False
+            for fmt_name, formatter in formats_to_try:
+                _report_status(f"Attempting commit with format: {fmt_name}")
                 try:
-                    error_text = await resp.text()
-                except Exception:
-                    error_text = "Could not read error text"
-                _report_status(f"[-] Commit upload failed: {resp.status} {error_text}")
+                    data_body = ",".join([f"{i + 1}:{formatter(crcs[i])}" for i in range(len(crcs))])
+                    
+                    resp = await browser.page.request.post(finish_url, headers=headers, data=data_body)
+                    
+                    if resp.ok:
+                        commit_success = True
+                        _report_status(f"Commit successful with format: {fmt_name}")
+                        break
+                    else:
+                        error_text = await resp.text()
+                        _report_status(f"[-] Commit failed with {fmt_name}: {resp.status} {error_text}")
+                        # If it's a 5xx error, maybe we shouldn't retry immediately? 
+                        # But for 400 (InvalidMergeParts), retrying format is the goal.
+                        await asyncio.sleep(1) # Small delay between attempts
+                        
+                except Exception as e:
+                     _report_status(f"[-] Exception during commit attempt {fmt_name}: {e}")
+
+            if not commit_success:
+                _report_status("[-] All commit formats failed.")
                 return False
 
             # 6. CommitUploadInner
