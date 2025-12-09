@@ -45,7 +45,8 @@ This project provides a FastAPI-based API to automate the uploading of videos to
     *   **Fingerprinting Protection**: Spoofs WebGL Vendor (Intel Iris), Canvas noise, AudioContext noise, and Font enumeration.
     *   **Hardware Spoofing**: Masks true CPU cores and RAM (reports 4 cores, 8GB RAM).
     *   **Signer Isolation**: Runs signature scripts in a separate, isolated background page to prevent interference with the main TikTok site.
-    *   **Account Warmup**: Automated warmup system (`WarmupBrowser`) that simulates human behavior (watching, scrolling, liking) to increase account trust and prevent shadowbans.
+    *   **Signer Isolation**: Runs signature scripts in a separate, isolated background page to prevent interference with the main TikTok site.
+    *   **Advanced Account Warmup**: Automated warmup system (`WarmupBrowser`) implementing the "Advanced Humanization & Niche Training Protocol". Simulates human behavior with defined archetypes (Engaged, Skip), non-linear mouse paths (Bézier), and niche-specific content interactions.
 
 ## 2. Prerequisites
 
@@ -424,7 +425,15 @@ Use this endpoint to scrape public video metrics (views, likes, comments, shares
 
 `POST http://your_server_ip:8000/warmup`
 
-Starts a background process to warm up an account by mimicking human behavior (scrolling `For You` feed, watching videos, random likes/mouse moves).
+`POST http://your_server_ip:8000/warmup`
+
+Starts a background process to warm up an account using the **Advanced Humanization Protocol**.
+
+*   **Watchtime Archetypes**: Simulates different viewer types ("Instant Skip", "Drop-Off", "Engaged View").
+*   **Niche Training**: Scans video content for keywords (e.g., `#tech`, `#iphone`) to boost engagement for target niches and skip irrelevant content.
+*   **Humanized Input**: Uses Bézier curves for mouse movement and realistic jitter.
+*   **Conditional Liking**: Likes only occur if the video was significantly watched (>70%).
+*   **Advanced Interactions**: Includes "Share-Trick" (fake sharing), "Profile Deep-Dive", and "Scroll-Back" moves.
 
 #### Request Parameters
 

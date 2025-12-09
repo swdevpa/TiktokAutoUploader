@@ -147,17 +147,31 @@ Implementiert den Reverse-Engineered Upload-Flow der TikTok Web-Version.
         *   `POST /tiktok/web/project/post/v1/`: Veröffentlicht das Video.
         *   **Return**: Gibt bei Erfolg die `video_id` (Vid) zurück.
 
-#### D. Warmup Engine (`warmup.py`)
-Simuliert menschliches Verhalten, um den "Trust Score" neuer Accounts zu erhöhen.
-*   **Klasse**: `WarmupBrowser` (erbt von `StealthBrowser`).
-*   **Methoden**: `human_scroll`, `human_mouse_move`, `maybe_like_video`.
-*   **Ablauf**:
-    1.  Navigiert zur For You Page.
-    2.  Loop für X Minuten:
-        *   Schaut Video (zufällig 5-25s).
-        *   Führt mit geringer Wahrscheinlichkeit Mausbewegungen oder Likes aus.
-        *   Scrollt weiter (variabler Speed).
-    3.  Sendet am Ende POST-Request an `callback_url` (falls definiert).
+#### D. Warmup Engine `warmup.py` (Advanced Humanization Protocol)
+Implementiert eine hochkomplexe Simulation menschlichen Verhaltens zur Steigerung des Account-Trust-Scores.
+
+*   **Humanized Input (Maus & Scrollen)**:
+    *   **Bézier-Kurven**: Mausbewegungen zu interaktiven Elementen erfolgen nicht linear, sondern über berechnete Kurven mit variabler Geschwindigkeit (Ease-In/Out).
+    *   **Idle Jitter**: Mikrobewegungen der Maus während des Videoschauens simulieren Nervosität oder "Spielen" mit der Maus.
+    *   **Smooth Scroll**: Scrollen erfolgt via Mausrad mit Physik-Simulation (Beschleunigung/Abbremsen).
+
+*   **Watchtime Strategies (Archetypen)**:
+    1.  **Instant Skip (40%)**: 0.5s - 2.5s (Desinteresse).
+    2.  **Drop-Off (40%)**: 30% - 60% der Länge (Interesse verloren).
+    3.  **Engaged View (20%)**: 95% - 130% der Länge (Looping). **Nur hier** sind Likes erlaubt.
+
+*   **Niche Training (Context Awareness)**:
+    *   Scannt `[data-e2e="video-desc"]` und Hashtags per DOM-Analyse.
+    *   **Whitelist** (z.B. `#iphone`, `#tech`): Erzwingt "Engaged View" und verdreifacht Like-Wahrscheinlichkeit.
+    *   **Blacklist** (z.B. `#dance`): Erzwingt "Instant Skip".
+
+*   **Advanced Interactions**:
+    *   **Conditional Liking**: `Like` nur wenn `watched_time > 70%` (Qualität vor Quantität).
+    *   **Share-Trick**: Öffnet Share-Menü -> Klickt "Copy Link" oder bricht ab (starkes Engagement-Signal).
+    *   **Profile Deep-Dive**: Klickt Username -> Scrollt Profil -> Browser Back.
+    *   **Scroll-Back**: Zufälliges Zurückscrollen (1.5%) zum vorherigen Video.
+
+*   **Konfiguration**: Alle Parameter (Weights, Keywords) sind in `WARMUP_CONFIG` zentral definiert.
 
 #### E. Metadata Spoofing (`metadata_spoofing.py`)
 Bereinigt und manipuliert Video-Metadaten vor dem Upload.

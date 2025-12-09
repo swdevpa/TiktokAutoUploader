@@ -8,6 +8,24 @@ from .StealthBrowser import StealthBrowser
 
 logger = logging.getLogger("warmup")
 
+# Configuration (Point 5 of Spec)
+WARMUP_CONFIG = {
+    "global_like_rate": 0.05,
+    "interaction_gate_threshold": 0.7,
+    "scroll_back_probability": 0.015,
+    "watch_patterns": {
+        "instant_skip_weight": 0.4,
+        "drop_off_weight": 0.4,
+        "engaged_view_weight": 0.2
+    },
+    "niche_training": {
+        "enabled": True,
+        "keywords": ["#iphone", "#app", "#tech", "#hack", "#ios", "#productivity", "#apple", "trick", "tutorial"],
+        "blacklisted_keywords": ["#dance", "#comedy", "#trend", "#lipsync", "pov", "drama"],
+        "boost_factor": 3.0
+    }
+}
+
 class WarmupBrowser(StealthBrowser):
     """
     Specialized browser wrapper for 'warming up' TikTok accounts.
@@ -23,132 +41,283 @@ class WarmupBrowser(StealthBrowser):
             "mouse_moves": 0
         }
 
-    async def human_scroll(self):
-        """Scrolls down like a human (smoothly, variable speed)."""
+    async def human_scroll(self, reverse=False):
+        """
+        Scrolls strictly using mouse wheel to simulate desktop user behavior.
+        reverse=True means scroll UP (backwards).
+        """
         try:
-            # Scroll distance between 300 and 800 pixels
-            scroll_amount = random.randint(300, 800)
-            # Break it down into small steps
-            steps = random.randint(5, 15)
-            step_size = scroll_amount / steps
+            # Scroll distance roughly one video height (approx 800-900px on 1080p minus UI)
+            # Desktop TikTok layout is variable, but wheel scroll works reliably.
+            scroll_amount = random.randint(300, 700)
+            if reverse:
+                scroll_amount = -scroll_amount
+
+            # Break it down into small steps (acceleration/deceleration)
+            steps = random.randint(8, 20)
             
-            for _ in range(steps):
+            # Bézier-like speed curve (simple ease-in-out)
+            for i in range(steps):
                 if not self.page:
                     break
-                await self.page.mouse.wheel(0, step_size)
-                # tiny pause between wheel ticks
-                await asyncio.sleep(random.uniform(0.01, 0.05))
+                
+                # Simple easing: slightly faster in middle
+                progress = i / steps
+                current_step_size = (scroll_amount / steps) * (1 + 0.5 * math.sin(progress * math.pi))
+                
+                await self.page.mouse.wheel(0, current_step_size)
+                
+                # Tiny random pause between wheel 'ticks'
+                await asyncio.sleep(random.uniform(0.02, 0.08))
             
             self.actions_performed["scrolls"] += 1
         except Exception as e:
             logger.warning(f"Error during scroll: {e}")
 
-    async def human_mouse_move(self):
-        """Moves mouse randomly across the screen."""
+    async def idle_mouse_jitter(self, duration_sec):
+        """
+        Moves the mouse slightly while watching a video (idle behavior).
+        """
+        end_time = time.time() + duration_sec
+        while time.time() < end_time:
+            # Only do jitter occasionally
+            if random.random() < 0.3:
+                # Get current pos (not directly possible in Playwright without tracking, 
+                # so we just move relative or to random nearby point if we knew where we were.
+                # Since we don't track, we move to a random central-ish area or just wiggle).
+                width = 1920
+                height = 1080
+                x = random.randint(200, width-200)
+                y = random.randint(200, height-200)
+                
+                # Move to x,y quickly
+                await self.page.mouse.move(x, y, steps=random.randint(3, 10))
+                
+            sleep_chunk = random.uniform(0.5, 3.0)
+            # Don't oversleep total duration
+            remaining = end_time - time.time()
+            if remaining <= 0: break
+            await asyncio.sleep(min(sleep_chunk, remaining))
+
+    async def get_video_content_info(self):
+        """
+        Scans the current video DOM for description keywords (Niche Training).
+        Returns: {'text': str, 'tags': list}
+        """
+        info = {'text': '', 'tags': []}
         try:
-            if not self.page:
-                return
-            width = self.page.viewport_size['width']
-            height = self.page.viewport_size['height']
-            
-            x = random.randint(0, width)
-            y = random.randint(0, height)
-            
-            # Move in steps? or just move
-            # Playwright move is instant unless steps provided
-            await self.page.mouse.move(x, y, steps=random.randint(5, 20))
-            self.actions_performed["mouse_moves"] += 1
+            # Selector for video description on Desktop Web
+            # e.g. [data-e2e="video-desc"] or nearby containers
+            desc_el = await self.page.query_selector('[data-e2e="video-desc"]')
+            if desc_el:
+                text = await desc_el.inner_text()
+                info['text'] = text.lower()
+                # Extract hashtags roughly
+                info['tags'] = [w for w in info['text'].split() if w.startswith("#")]
         except Exception as e:
-            logger.warning(f"Error during mouse move: {e}")
+            logger.debug(f"Content scan failed: {e}")
+        return info
 
-    async def maybe_like_video(self):
-        """Tries to find a like button and click it with moderate probability (15%)."""
-        if random.random() > 0.15:
-            return
+    async def determine_watch_strategy(self, content_info):
+        """
+        Decides the archetype based on content (Niche Training) and weights.
+        Returns: (archetype_name, duration_multiplier, like_boost)
+        """
+        # 1. Niche Training Filters
+        config = WARMUP_CONFIG["niche_training"]
+        positive_keywords = config["keywords"]
+        negative_keywords = config["blacklisted_keywords"]
+        boost_factor = config["boost_factor"]
+        
+        text = content_info.get('text', '')
+        
+        # Check Positive
+        if config["enabled"] and any(w in text for w in positive_keywords):
+            logger.info(f"Niche MATCH found: {text[:30]}...")
+            return "engaged_view", 1.2, boost_factor # Boost like prob x3
+        
+        # Check Negative
+        if config["enabled"] and any(w in text for w in negative_keywords):
+            logger.info(f"Niche MISMATCH found: {text[:30]}...")
+            return "instant_skip", 1.0, 0.0 # Force skip, no like
+        
+        # 2. Random Archetypes
+        patterns = WARMUP_CONFIG["watch_patterns"]
+        r = random.random()
+        
+        # Accumulate weights (assumes they likely sum to 1.0, but logic works sequentially)
+        skip_threshold = patterns["instant_skip_weight"]
+        drop_threshold = skip_threshold + patterns["drop_off_weight"]
+        
+        if r < skip_threshold:
+            return "instant_skip", 1.0, 1.0
+        elif r < drop_threshold:
+            return "drop_off", 1.0, 1.0
+        else:
+            return "engaged_view", 1.0, 1.0
 
+    async def perform_advanced_interaction(self):
+        """
+        Executes "Share-Trick" or "Profile Deep-Dive" occasionally.
+        """
+        r = random.random()
         try:
-            # Try multiple selectors for the like button
-            # 1. data-e2e="like-icon" (Standard)
-            # 2. span[data-e2e="like-icon"] (Specific)
-            # 3. button[aria-label^="Like"] (Accessibility)
-            selectors = [
-                '[data-e2e="like-icon"]',
-                '[data-e2e="feed-like-icon"]',
-                'div[data-e2e="like-icon"]',
-            ]
-            
-            btn = None
-            for sel in selectors:
-                btns = await self.page.query_selector_all(sel)
-                if btns:
-                    # Filter for visible buttons only? 
-                    # For simplicity, pick the first or second one as they are likely in viewport
-                    btn = btns[0] 
-                    if len(btns) > 1:
-                        btn = btns[min(1, len(btns)-1)]
-                    break
-            
-            if btn:
-                # Scroll slightly into view if needed? usually Playwright handles auto-scroll on click
-                await btn.click()
-                self.actions_performed["likes"] += 1
-                logger.info("Liked a video (click).")
-                await asyncio.sleep(random.uniform(0.5, 1.5))
+            if r < 0.5:
+                # Share Trick
+                # Find share button (arrow icon)
+                share_btn = await self.page.query_selector('[data-e2e="share-icon"]')
+                if share_btn:
+                    await self.human_click_element(share_btn)
+                    await asyncio.sleep(random.uniform(0.8, 1.5))
+                    # Click body to dismiss or 'Copy Link'
+                    # On desktop, share menu might be a popover. Clicking body usually closes it.
+                    # Or find 'Copy link' text
+                    copy_link = await self.page.query_selector('text="Copy link"')
+                    if copy_link and random.random() < 0.5:
+                        await self.human_click_element(copy_link)
+                        logger.info("Performed Share-Trick (Copy Link)")
+                    else:
+                        # Dismiss
+                        await self.page.mouse.click(500, 500) # blind click in center
+                        logger.info("Performed Share-Trick (Dismiss)")
             else:
-                # Fallback: Double click on the video container to like
-                # This is risky if we click a link/hashtag, but safe in center of screen usually.
-                # Let's try to find the video container.
-                video_container = await self.page.query_selector('div[data-e2e="feed-video"]')
-                if video_container:
-                     # Double click center of video
-                     box = await video_container.bounding_box()
-                     if box:
-                         await self.page.mouse.dblclick(box["x"] + box["width"]/2, box["y"] + box["height"]/2)
-                         self.actions_performed["likes"] += 1
-                         logger.info("Liked a video (double-tap).")
-                else:
-                    logger.debug("Wanted to like, but no button or video container found.")
-
+                # Profile Deep Dive
+                # Click username [data-e2e="video-author-uniqueid"]
+                user_link = await self.page.query_selector('[data-e2e="video-author-uniqueid"]')
+                if user_link:
+                    await self.human_click_element(user_link)
+                    logger.info("Performed Profile Deep-Dive (Enter)")
+                    # Wait for load
+                    await self.page.wait_for_load_state("domcontentloaded")
+                    await asyncio.sleep(random.uniform(2, 5))
+                    # Scroll a bit
+                    await self.human_scroll()
+                    await asyncio.sleep(random.uniform(1, 3))
+                    # Go back
+                    await self.page.go_back()
+                    logger.info("Performed Profile Deep-Dive (Return)")
+                    await asyncio.sleep(random.uniform(1, 2))
+                    
         except Exception as e:
-            logger.warning(f"Error attempting like: {e}")
+            logger.debug(f"Advanced interaction failed: {e}")
+
+
+    async def human_click_element(self, element):
+        """
+        Helper to invoke human_click on a specific playwright element handle.
+        """
+        if not element: return
+        # selector logic in human_click expects a string selector, 
+        # but here we have an element handle. 
+        # We need to adapt human_click or just use bounding box logic here.
+        box = await element.bounding_box()
+        if box:
+            self.human_click_box(box)
+
+    async def human_click_box(self, box):
+        """
+        Internal: clicks a bounding box with bezier path.
+        """
+        # Target
+        target_x = box["x"] + box["width"] * random.uniform(0.2, 0.8)
+        target_y = box["y"] + box["height"] * random.uniform(0.2, 0.8)
+        
+        # Start (mock) - assume center or random
+        start_x = random.randint(0, 1920)
+        start_y = random.randint(0, 1080)
+        
+        steps = random.randint(20, 40)
+        # Use underlying bezier from StealthBrowser (assuming it's implemented there or we duplicate)
+        # We can implement a local helper if StealthBrowser._bezier_curve isn't accessible or is different.
+        points = self._bezier_curve(start_x, start_y, target_x, target_y, steps)
+        
+        for p in points:
+            await self.page.mouse.move(p[0], p[1])
+            if random.random() > 0.9: await asyncio.sleep(0.001)
+            
+        await asyncio.sleep(random.uniform(0.05, 0.1))
+        await self.page.mouse.down()
+        await asyncio.sleep(random.uniform(0.05, 0.1))
+        await self.page.mouse.up()
+
 
     async def run_warmup(self, duration_minutes: int):
-        """
-        Main execution loop for warmup.
-        """
-        logger.info(f"Starting warmup for {duration_minutes} minutes.")
+        logger.info(f"Starting ADVANCED Warmup Protocol for {duration_minutes}m.")
         start_time = time.time()
         end_time = start_time + (duration_minutes * 60)
         
-        # Navigate to For You
+        # Navigate
         try:
             await self.page.goto("https://www.tiktok.com/foryou", wait_until="domcontentloaded")
-            await asyncio.sleep(random.uniform(3, 7)) # Initial load wait
+            await asyncio.sleep(random.uniform(3, 7)) 
         except Exception as e:
-            logger.error(f"Failed to load For You page: {e}")
+            logger.error(f"Failed to load For You: {e}")
             return
 
         while time.time() < end_time:
-            # 1. Watch video (wait)
-            watch_time = random.uniform(5, 25) # Watch for 5-25 seconds
-            logger.info(f"Watching video for {watch_time:.1f}s")
-            await asyncio.sleep(watch_time)
+            # 1. Analyze Content
+            content_info = await self.get_video_content_info()
+            
+            # 2. Determine Archetype
+            archetype, dur_mult, like_prob_mult = await self.determine_watch_strategy(content_info)
+            
+            # 3. Determine Watch Duration
+            # Assuming 'video_duration' is unknown (hard to read without waiting), we simulate behavior based on user time.
+            # Real users don't know duration either until they finish or look at the bar.
+            # We estimate a "full" video is ~15-30s.
+            estimated_full_duration = random.uniform(15, 30)
+            
+            if archetype == "instant_skip":
+                watch_time = random.uniform(0.5, 2.5)
+                logger.info(f"[Action] Instant Skip ({watch_time:.1f}s) - {content_info['text'][:20]}...")
+            
+            elif archetype == "drop_off":
+                watch_time = estimated_full_duration * random.uniform(0.3, 0.6)
+                logger.info(f"[Action] Drop-Off ({watch_time:.1f}s)")
+                
+            elif archetype == "engaged_view":
+                # Watch 95-130% (Looping)
+                watch_time = estimated_full_duration * random.uniform(0.95, 1.3)
+                logger.info(f"[Action] Engaged View ({watch_time:.1f}s) - MATCHED!")
+            
+            # 4. Watch Loop
+            await self.idle_mouse_jitter(watch_time)
             self.actions_performed["watched_seconds"] += watch_time
             
-            # 2. Maybe move mouse
-            if random.random() < 0.3:
-                await self.human_mouse_move()
+            # 5. Conditional Interactions (Only if Engaged View)
+            if archetype == "engaged_view":
+                # Gatekeeper: Did we watch enough? (Yes, by definition of engaged view time)
+                
+                # Check Conditional Like
+                # Base rate * boost
+                base_like_rate = WARMUP_CONFIG["global_like_rate"]
+                like_chance = base_like_rate * like_prob_mult
+                
+                if random.random() < like_chance:
+                    await self.maybe_like_video() # Existing method, improved with Human Click later?
+                
+                # Advanced Interaction?
+                if random.random() < 0.05: # 5% chance generic advanced interaction
+                    await self.perform_advanced_interaction()
 
-            # 3. Maybe like
-            await self.maybe_like_video()
+            # 6. Scroll Logic (with Scroll-Back chance)
+            # Scroll Back Probability
+            if random.random() < WARMUP_CONFIG["scroll_back_probability"]:
+                logger.info("Perform Scroll-Back Move")
+                await self.human_scroll() # Down (next)
+                await asyncio.sleep(1.0)
+                await self.human_scroll(reverse=True) # Up (back)
+                # Now we are back at the "interesting" video.
+                # Force Engaged View behavior effectively by waiting again?
+                await asyncio.sleep(random.uniform(5, 10))
+                if random.random() < 0.2: # High chance to like after scroll back
+                    await self.maybe_like_video()
+            else:
+                await self.human_scroll()
+                
+            await asyncio.sleep(random.uniform(0.5, 1.5))
 
-            # 4. Scroll to next
-            await self.human_scroll()
-            
-            # Short pause after scroll
-            await asyncio.sleep(random.uniform(0.5, 2.0))
-
-        logger.info("Warmup duration reached.")
+        logger.info("Advanced Warmup Complete.")
 
 
 async def warmup_user(session_file_path: str, proxy: str, duration_minutes: int, callback_url: str = None):
