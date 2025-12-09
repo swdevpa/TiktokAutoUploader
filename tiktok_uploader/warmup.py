@@ -3,6 +3,7 @@ import random
 import logging
 import time
 import requests
+import math
 from pathlib import Path
 from .StealthBrowser import StealthBrowser
 
