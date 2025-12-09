@@ -59,6 +59,10 @@ ALLOWED_IMAGE_CONTENT_TYPES = {
     "image/bmp",
     "image/tiff",
 }
+
+# Import warmup function
+from tiktok_uploader.warmup import warmup_user
+
 DEFAULT_IMAGE_FADE_DURATION_SECONDS = float(os.getenv("DEFAULT_IMAGE_FADE_DURATION_SECONDS", 5.0))
 MAX_IMAGE_FADE_DURATION_SECONDS = float(os.getenv("MAX_IMAGE_FADE_DURATION_SECONDS", 60.0))
 UPLOAD_SECRET = os.getenv("UPLOAD_SECRET")
@@ -497,6 +501,76 @@ async def create_fadein_video_from_image(
         cleanup_directory(temp_dir)
         logger.exception("Failed to create fade-in video: %s", exc)
         raise HTTPException(status_code=500, detail=f"Failed to create fade-in video: {exc}")
+
+    except Exception as exc:
+        cleanup_directory(temp_dir)
+        logger.exception("Failed to create fade-in video: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to create fade-in video: {exc}")
+
+
+@app.post("/warmup")
+async def start_warmup(
+    background_tasks: BackgroundTasks,
+    session_file: UploadFile = File(...),
+    proxy: str = Form(...),
+    duration_minutes: int = Form(15),
+    callback_url: str = Form(None),
+    auth_token: str = Header(None, alias="X-Upload-Auth"),
+):
+    """
+    Starts a background warmup task for a TikTok account.
+    Returns immediately confirming start.
+    """
+    validate_secret_token(auth_token)
+    
+    # Validation
+    if duration_minutes < 1 or duration_minutes > 120:
+         raise HTTPException(status_code=400, detail="Duration must be between 1 and 120 minutes.")
+
+    # Save session file temporarily
+    # Note: We need to keep this file for the duration of the background task.
+    # We can't rely on `tempfile` cleanup that happens in `finally` blocks of sync functions easily 
+    # if it's passed to background task. 
+    # Better to manually create a unique path and let the background task clean it up?
+    # Or just use a unique temp file that we promise to delete inside `warmup_user`?
+    # Let's modify `warmup_user` or wrap it to handle cleanup.
+    
+    # Create a persistent temp file (not auto-deleted on close)
+    temp_dir = tempfile.mkdtemp()
+    session_path = Path(temp_dir) / session_file.filename
+    with open(session_path, "wb") as buffer:
+        shutil.copyfileobj(session_file.file, buffer)
+        
+    logger.info(f"Received warmup request for {session_file.filename}, proxy={proxy}, duration={duration_minutes}m, callback={callback_url}")
+
+    async def _warmup_wrapper_with_cleanup(session_path_str, *args, **kwargs):
+        try:
+            await warmup_user(session_path_str, *args, **kwargs)
+        finally:
+            try:
+                # Cleanup the temp dir we created
+                shutil.rmtree(os.path.dirname(session_path_str))
+                logger.info(f"Cleaned up temp session file at {session_path_str}")
+            except Exception as e:
+                logger.error(f"Failed to clean up temp file: {e}")
+
+    background_tasks.add_task(
+        _warmup_wrapper_with_cleanup, 
+        str(session_path), 
+        proxy=proxy, 
+        duration_minutes=duration_minutes, 
+        callback_url=callback_url
+    )
+
+    return JSONResponse(status_code=200, content={
+        "message": "Warmup task started successfully.",
+        "details": {
+            "session": session_file.filename,
+            "duration_minutes": duration_minutes,
+            "proxy": proxy,
+            "callback_url": callback_url
+        }
+    })
 
 
 async def parse_count(text: str) -> int:
