@@ -93,7 +93,10 @@ Die kritischste Komponente für die Umgehung von Bot-Erkennung.
 *   **Technologie**: Microsoft Playwright (Chromium).
 *   **Browser-Argumente**: `--disable-blink-features=AutomationControlled`, `--no-sandbox`, `--disable-infobars`.
 *   **Guest Mode**: Optionaler Modus (`guest_mode=True`), der das Laden von Cookies verhindert und eine saubere Session garantiert.
-*   **Proxy-Detection**: Fragt `http://ip-api.com/json` ab, um Locale und Geolocation zu ermitteln. Setzt Zeitzone basierend auf Proxy oder manuellem Override (`--timezone`).
+*   **Dual-Source Proxy Detection**:
+    *   **Primary (HTTPS)**: Fragt `https://ipapi.co/json/` ab. Dieser Dienst bietet hohe Genauigkeit für Residential Proxies und deckt sich meist mit TikToks Geo-Daten.
+    *   **Fallback (HTTP)**: Falls der erste Dienst fehlschlägt, wird `http://ip-api.com/json` genutzt.
+    *   Das Ergebnis bestimmt vollautomatisch Zeitzone, Locale und Geolocation des Browser-Kontexts.
 *   **Stealth-Injections (JavaScript)**:
     1.  **Navigator**: Überschreibt `navigator.webdriver` mit `undefined`.
     2.  **Chrome Object**: Mockt `window.chrome`.
