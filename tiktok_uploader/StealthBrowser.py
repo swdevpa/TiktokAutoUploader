@@ -26,6 +26,25 @@ class StealthBrowser:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
 
+    async def probe_proxy(self):
+        """
+        Public utility to test proxy settings without starting a full session.
+        Returns the detected configuration (timezone, locale, ip, etc).
+        """
+        self.playwright = await async_playwright().start()
+        detected = {}
+        try:
+            proxy_config = self._parse_proxy(self.proxy) if self.proxy else None
+            if proxy_config:
+                detected = await self._detect_proxy_settings(proxy_config)
+            else:
+                detected = {"error": "No proxy provided"}
+        except Exception as e:
+            detected = {"error": str(e)}
+        finally:
+            await self.playwright.stop()
+        return detected
+
     async def start(self):
         self.playwright = await async_playwright().start()
         
@@ -53,23 +72,32 @@ class StealthBrowser:
         locale = "en-US"
         geolocation = None
         
-        if self.timezone_id:
-             print(f"Using manual timezone override: {self.timezone_id}")
-             timezone_id = self.timezone_id
-             # We still might want locale from proxy if not set, but let's stick to IP-API for locale 
-             # unless we want to override that too. For now, timezone is the critical one.
-        elif proxy_config:
+        detected_settings = None
+        if proxy_config:
             print("Detecting proxy location...")
             try:
-                proxy_info = await self._detect_proxy_settings(proxy_config)
-                if proxy_info:
-                    timezone_id = proxy_info.get("timezone", timezone_id)
-                    locale = proxy_info.get("locale", locale)
-                    if "lat" in proxy_info and "lon" in proxy_info:
-                        geolocation = {"latitude": proxy_info["lat"], "longitude": proxy_info["lon"]}
-                    print(f"Proxy detected: {timezone_id} | {locale}")
+                detected_settings = await self._detect_proxy_settings(proxy_config)
             except Exception as e:
                 print(f"Failed to detect proxy settings: {e}")
+                
+        if detected_settings:
+            # Use detected locale/geo
+            locale = detected_settings.get("locale", locale)
+            if "lat" in detected_settings and "lon" in detected_settings:
+                geolocation = {"latitude": detected_settings["lat"], "longitude": detected_settings["lon"]}
+            
+            # Use detected timezone UNLESS manual override is provided
+            if self.timezone_id:
+                print(f"Using manual timezone override: {self.timezone_id} (Detected: {detected_settings.get('timezone')})")
+                timezone_id = self.timezone_id
+            else:
+                timezone_id = detected_settings.get("timezone", timezone_id)
+            
+            print(f"Proxy detected: {timezone_id} | {locale}")
+            
+        elif self.timezone_id:
+             print(f"Using manual timezone override (Detection failed): {self.timezone_id}")
+             timezone_id = self.timezone_id
 
         # Create context with stealth settings
         context_options = {
@@ -460,25 +488,63 @@ class StealthBrowser:
 
     async def _detect_proxy_settings(self, proxy_config):
         """
-        Detects timezone and locale from the proxy IP.
+        Detects the timezone, locale, and geolocation of the proxy IP.
+        Now uses ipapi.co (HTTPS) as primary source for better accuracy (matches Whoer),
+        with ip-api.com (HTTP) as fallback.
         """
-        # Use a separate request context for the lookup
-        request_context = await self.playwright.request.new_context(proxy=proxy_config)
+        # Create a temporary non-persistent context just for the IP check
+        temp_browser = await self.playwright.chromium.launch(
+            proxy=proxy_config,
+            headless=True, 
+            args=["--no-sandbox"]
+        )
+        
+        page = await temp_browser.new_page()
+        detected = {}
+        
+        # 1. Primary Source: ipapi.co (More accurate for Residential IPs)
         try:
-            # ip-api.com is free and provides timezone/countryCode
-            response = await request_context.get("http://ip-api.com/json", timeout=10000)
-            if response.ok:
+            print("  → Probing ipapi.co (Primary)...")
+            response = await page.goto("https://ipapi.co/json/", timeout=15000)
+            if response and response.ok:
                 data = await response.json()
-                if data.get("status") == "success":
-                    return {
-                        "timezone": data.get("timezone"),
-                        "locale": "en-US", # Default to en-US, but could map countryCode to locale if needed
-                        "lat": data.get("lat"),
-                        "lon": data.get("lon"),
-                        "countryCode": data.get("countryCode")
-                    }
+                detected["timezone"] = data.get("timezone")
+                detected["locale"] = "en-US" # Default
+                
+                # Construct locale from country
+                country = data.get("country_code")
+                if country:
+                    detected["locale"] = f"en-{country}"
+                    
+                detected["lat"] = data.get("latitude")
+                detected["lon"] = data.get("longitude")
+                
+                print(f"    ✔ Primary Source Success: {detected.get('timezone')} ({country})")
+                await temp_browser.close()
+                return detected
         except Exception as e:
-            print(f"Proxy detection error: {e}")
-        finally:
-            await request_context.dispose()
-        return None
+            print(f"    ✖ Primary Source Failed: {e}")
+
+        # 2. Fallback Source: ip-api.com (Faster, HTTP, less strict)
+        try:
+            print("  → Probing ip-api.com (Fallback)...")
+            # This is HTTP, so might leak if not careful, but we are in a proxy context
+            response = await page.goto("http://ip-api.com/json", timeout=15000)
+            if response and response.ok:
+                data = await response.json()
+                detected["timezone"] = data.get("timezone")
+                detected["locale"] = "en-US"
+                
+                country = data.get("countryCode")
+                if country:
+                    detected["locale"] = f"en-{country}"
+                
+                detected["lat"] = data.get("lat")
+                detected["lon"] = data.get("lon")
+                
+                print(f"    ✔ Fallback Source Success: {detected.get('timezone')} ({country})")
+        except Exception as e:
+            print(f"    ✖ Fallback Source Failed: {e}")
+
+        await temp_browser.close()
+        return detected

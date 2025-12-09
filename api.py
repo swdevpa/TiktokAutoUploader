@@ -81,6 +81,30 @@ class ScrapeResultData(BaseModel):
     comment_count: int = 0
     share_count: int = 0
 
+class ProxyTestRequest(BaseModel):
+    proxy: str
+
+@app.post("/upload/test-proxy")
+async def test_proxy_settings(request: ProxyTestRequest, x_upload_auth: str = Header(None)):
+    """
+    Test endpoint to verify what timezone/locale the system detects for a given proxy.
+    Does not perform any upload.
+    """
+    if x_upload_auth != UPLOAD_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid Upload Secret")
+
+    from tiktok_uploader.StealthBrowser import StealthBrowser
+    
+    print(f"Testing proxy: {request.proxy}")
+    
+    try:
+        # Initialize browser wrapper (will not launch until probe_proxy is called)
+        browser = StealthBrowser(headless=True, proxy=request.proxy)
+        result = await browser.probe_proxy()
+        return {"status": "success", "detected_settings": result}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 class ScrapeResult(BaseModel):
     id: str
     status: str  # success, video_removed, error, processing, scrape_failed
