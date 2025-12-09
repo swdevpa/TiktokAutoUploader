@@ -62,27 +62,53 @@ class WarmupBrowser(StealthBrowser):
             logger.warning(f"Error during mouse move: {e}")
 
     async def maybe_like_video(self):
-        """Tries to find a like button and click it with low probability."""
-        # 5% chance to like (adjust as needed for realism)
-        if random.random() > 0.05:
+        """Tries to find a like button and click it with moderate probability (15%)."""
+        if random.random() > 0.15:
             return
 
         try:
-            # Selector for the heart icon on ForYou feed
-            # Note: Selectors change often. This is a best effort.
-            # Usually [data-e2e="like-icon"] or similar container
-            like_buttons = await self.page.query_selector_all('[data-e2e="like-icon"]')
-            if like_buttons:
-                # Pick a random visible one? 
-                # Ideally the one currently in view. 
-                # For simplicity, just pick the first one that looks visible if possible.
-                # Actually, blindly clicking might be risky if it's not in viewport.
-                # Let's skip complex visibility checks for this MVP version unless needed.
-                btn = random.choice(like_buttons[:2]) # first couple only
+            # Try multiple selectors for the like button
+            # 1. data-e2e="like-icon" (Standard)
+            # 2. span[data-e2e="like-icon"] (Specific)
+            # 3. button[aria-label^="Like"] (Accessibility)
+            selectors = [
+                '[data-e2e="like-icon"]',
+                '[data-e2e="feed-like-icon"]',
+                'div[data-e2e="like-icon"]',
+            ]
+            
+            btn = None
+            for sel in selectors:
+                btns = await self.page.query_selector_all(sel)
+                if btns:
+                    # Filter for visible buttons only? 
+                    # For simplicity, pick the first or second one as they are likely in viewport
+                    btn = btns[0] 
+                    if len(btns) > 1:
+                        btn = btns[min(1, len(btns)-1)]
+                    break
+            
+            if btn:
+                # Scroll slightly into view if needed? usually Playwright handles auto-scroll on click
                 await btn.click()
                 self.actions_performed["likes"] += 1
-                logger.info("Liked a video.")
-                await asyncio.sleep(1) # pause after liking
+                logger.info("Liked a video (click).")
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+            else:
+                # Fallback: Double click on the video container to like
+                # This is risky if we click a link/hashtag, but safe in center of screen usually.
+                # Let's try to find the video container.
+                video_container = await self.page.query_selector('div[data-e2e="feed-video"]')
+                if video_container:
+                     # Double click center of video
+                     box = await video_container.bounding_box()
+                     if box:
+                         await self.page.mouse.dblclick(box["x"] + box["width"]/2, box["y"] + box["height"]/2)
+                         self.actions_performed["likes"] += 1
+                         logger.info("Liked a video (double-tap).")
+                else:
+                    logger.debug("Wanted to like, but no button or video container found.")
+
         except Exception as e:
             logger.warning(f"Error attempting like: {e}")
 
