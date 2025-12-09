@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from tiktok_uploader.StealthBrowser import StealthBrowser
+from .SignupBrowser import SignupBrowser
 from tiktok_uploader import Config
 from tiktok_uploader.metadata_spoofing import prepare_video_for_upload, MetadataProcessingError
 from requests_auth_aws_sigv4 import AWSSigV4
@@ -60,7 +61,7 @@ async def create_account(proxy: str, save_name: str, timezone: str = None):
     print(f"Initializing for ACCOUNT CREATION with proxy: {proxy}")
     
     # 1. Start Browser (Headed)
-    async with StealthBrowser(headless=False, proxy=proxy, timezone_id=timezone) as browser:
+    async with SignupBrowser(headless=False, proxy=proxy, timezone_id=timezone) as browser:
         
         # 2. Pre-flight Safety Check
         print("Performing Safety Pre-flight Check...")
@@ -115,39 +116,34 @@ async def create_account(proxy: str, save_name: str, timezone: str = None):
         await browser.page.goto("https://www.tiktok.com/signup", timeout=60000)
         
         print("Please complete the signup process in the browser.")
-        print("Waiting for 'sessionid' cookie (Login Success)...")
+        print("NOTE: TikTok assigns session IDs to guests too. We cannot auto-detect login reliable.")
+        print("BUT: The browser is fresh/incognito.")
+
+        # Interactive API helper
+        use_api = input("Do you want to use the API to send a verification code? (y/N): ")
+        if use_api.strip().lower() == 'y':
+            email_addr = input("Enter email address: ")
+            if email_addr:
+                print(f"Attempting to send code to {email_addr} via API...")
+                result = await browser.request_email_code(email_addr)
+                print(f"API Result: {result}")
         
-        # 5. Wait for session
-        logged_in = False
-        session_file = f"tiktok_session-{save_name}"
-        
-        # Loop until sessionid found or browser closed
+
+        # 5. Wait for User Confirmation
         while True:
-            if browser.context.pages == 0: # Check if all pages closed
-                 print("Browser closed by user.")
-                 break
-            
-            try:
-                cookies = await browser.context.cookies()
-                for cookie in cookies:
-                    if cookie["name"] == "sessionid":
-                        logged_in = True
-                        break
-            except Exception:
-                pass
-            
-            if logged_in:
-                print(f"Login Detected! Saving session to {session_file}...")
-                await browser.save_cookies(session_file)
-                # Wait a bit for other cookies
-                await asyncio.sleep(3)
-                await browser.save_cookies(session_file) # Save again to be sure
-                print("Session saved successfully.")
+            confirm = input("Type 'DONE' when you are successfully logged in and see your feed: ")
+            if confirm.strip().upper() == "DONE":
                 break
-                
-            await asyncio.sleep(2)
+            print("Invalid input. Type 'DONE' via keyboard when ready.")
             
-    return logged_in
+        print(f"Saving session to tiktok_session-{save_name}...")
+        await browser.save_cookies(f"tiktok_session-{save_name}")
+        # Wait a bit and save again to ensure all tokens are captured
+        await asyncio.sleep(3)
+        await browser.save_cookies(f"tiktok_session-{save_name}") 
+        print("Session saved successfully.")
+            
+    return True
 
 async def upload_video(session_file_path, video, title, schedule_time=0, allow_comment=1, allow_duet=0, allow_stitch=0, visibility_type=0, brand_organic_type=0, branded_content_type=0, ai_label=0, proxy=None, datacenter=None, status_callback=None):
     """

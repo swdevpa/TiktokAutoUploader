@@ -7,7 +7,7 @@ import math
 from playwright.async_api import async_playwright, Page, BrowserContext
 from .cookies import load_cookies_from_file, save_cookies_to_file
 
-class StealthBrowser:
+class SignupBrowser:
     def __init__(self, headless=True, proxy=None, guest_mode=False, timezone_id=None):
         self.headless = headless
         self.proxy = proxy
@@ -35,7 +35,7 @@ class StealthBrowser:
             "--no-sandbox",
             "--disable-setuid-sandbox",
         ]
-
+        
         proxy_config = None
         if self.proxy:
             proxy_config = self._parse_proxy(self.proxy)
@@ -53,23 +53,27 @@ class StealthBrowser:
         locale = "en-US"
         geolocation = None
         
-        if self.timezone_id:
-             print(f"Using manual timezone override: {self.timezone_id}")
-             timezone_id = self.timezone_id
-             # We still might want locale from proxy if not set, but let's stick to IP-API for locale 
-             # unless we want to override that too. For now, timezone is the critical one.
-        elif proxy_config:
+        detected_settings = None
+        if proxy_config:
             print("Detecting proxy location...")
             try:
-                proxy_info = await self._detect_proxy_settings(proxy_config)
-                if proxy_info:
-                    timezone_id = proxy_info.get("timezone", timezone_id)
-                    locale = proxy_info.get("locale", locale)
-                    if "lat" in proxy_info and "lon" in proxy_info:
-                        geolocation = {"latitude": proxy_info["lat"], "longitude": proxy_info["lon"]}
-                    print(f"Proxy detected: {timezone_id} | {locale}")
+                detected_settings = await self._detect_proxy_settings(proxy_config)
             except Exception as e:
                 print(f"Failed to detect proxy settings: {e}")
+                
+        if detected_settings:
+            timezone_id = detected_settings.get("timezone", timezone_id)
+            locale = detected_settings.get("locale", locale)
+            if "lat" in detected_settings and "lon" in detected_settings:
+                geolocation = {"latitude": detected_settings["lat"], "longitude": detected_settings["lon"]}
+            print(f"Proxy detected: {timezone_id} | {locale}")
+            
+        elif self.timezone_id:
+             print(f"Using manual timezone override (Detection failed): {self.timezone_id}")
+             timezone_id = self.timezone_id
+
+        # Store intended locale for later API calls
+        self.locale = locale
 
         # Create context with stealth settings
         context_options = {
@@ -81,9 +85,9 @@ class StealthBrowser:
             "has_touch": True,
             "is_mobile": False,
             "permissions": ["geolocation"],
-            "extra_http_headers": {
-                "DNT": "1" # DNT: 1 means "Do Not Track"
-            }
+            # "extra_http_headers": {
+            #     "DNT": "1" # DNT: 1 means "Do Not Track" - DISABLED
+            # }
         }
         
         if geolocation:
@@ -94,143 +98,87 @@ class StealthBrowser:
         # Apply CDP Stealth Patches
         await self._apply_stealth(self.context)
 
-        # Load signature scripts
-        await self._inject_signature_scripts()
+
+        # 11. Setup isolated signer page
+        await self._setup_signer_page()
 
         self.page = await self.context.new_page()
 
     async def _apply_stealth(self, context: BrowserContext):
-        # 1. Override navigator.webdriver
-        await context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            Object.defineProperty(navigator, 'doNotTrack', {
-                get: () => "1"
-            });
-        """)
+        pass
+        # 1. Remove webdriver property - DISABLED per user request (real device)
+        # await context.add_init_script("""
+        #     Object.defineProperty(navigator, 'webdriver', {
+        #         get: () => undefined
+        #     });
+        # """)
 
-        # 2. Mock chrome object
-        await context.add_init_script("""
-            window.chrome = {
-                runtime: {}
-            };
-        """)
+        # 2. Mock chrome object - DISABLED
+        # await context.add_init_script("""
+        #     window.chrome = {
+        #         runtime: {}
+        #     };
+        # """)
 
-        # 3. Mock permissions
-        await context.add_init_script("""
-            const originalQuery = window.navigator.permissions.query;
-            return window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                Promise.resolve({ state: Notification.permission }) :
-                originalQuery(parameters)
-            );
-        """)
 
-        # 4. Mock plugins (basic)
-        await context.add_init_script("""
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5]
-            });
-        """)
+        # 3. Mock permissions - DISABLED
+        # await context.add_init_script("""
+        #     const originalQuery = window.navigator.permissions.query;
+        #     return window.navigator.permissions.query = (parameters) => (
+        #         parameters.name === 'notifications' ?
+        #         Promise.resolve({ state: Notification.permission }) :
+        #         originalQuery.apply(navigator.permissions, [parameters])
+        #     );
+        # """)
 
-        # 5. WebGL Vendor/Renderer Spoofing
-        await context.add_init_script("""
-            const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                // UNMASKED_VENDOR_WEBGL
-                if (parameter === 37445) {
-                    return 'Intel Inc.';
-                }
-                // UNMASKED_RENDERER_WEBGL
-                if (parameter === 37446) {
-                    return 'Intel Iris OpenGL Engine';
-                }
-                return getParameter(parameter);
-            };
-        """)
 
-        # 6. Canvas Noise Injection
-        await context.add_init_script("""
-            const toBlob = HTMLCanvasElement.prototype.toBlob;
-            const toDataURL = HTMLCanvasElement.prototype.toDataURL;
-            const getImageData = CanvasRenderingContext2D.prototype.getImageData;
-            
-            var noise = {
-                "r": Math.floor(Math.random() * 10) - 5,
-                "g": Math.floor(Math.random() * 10) - 5,
-                "b": Math.floor(Math.random() * 10) - 5,
-                "a": Math.floor(Math.random() * 10) - 5
-            };
+        # 4. Mock plugins (basic) - DISABLED
+        # await context.add_init_script("""
+        #     Object.defineProperty(navigator, 'plugins', {
+        #         get: () => [1, 2, 3, 4, 5]
+        #     });
+        # """)
 
-            // Override toDataURL
-            HTMLCanvasElement.prototype.toDataURL = function(type, encoderOptions) {
-                const context = this.getContext('2d');
-                if (context) {
-                    const shift = {
-                        'r': Math.floor(Math.random() * 10) - 5,
-                        'g': Math.floor(Math.random() * 10) - 5,
-                        'b': Math.floor(Math.random() * 10) - 5,
-                        'a': Math.floor(Math.random() * 10) - 5
-                    };
-                    const width = this.width;
-                    const height = this.height;
-                    const imageData = context.getImageData(0, 0, width, height);
-                    for (let i = 0; i < height; i++) {
-                        for (let j = 0; j < width; j++) {
-                            const n = i * (width * 4) + j * 4;
-                            imageData.data[n + 0] = imageData.data[n + 0] + shift.r;
-                            imageData.data[n + 1] = imageData.data[n + 1] + shift.g;
-                            imageData.data[n + 2] = imageData.data[n + 2] + shift.b;
-                            imageData.data[n + 3] = imageData.data[n + 3] + shift.a;
-                        }
-                    }
-                    context.putImageData(imageData, 0, 0);
-                }
-                return toDataURL.apply(this, arguments);
-            };
-        """)
 
-        # 7. AudioContext Noise
-        await context.add_init_script("""
-            const getChannelData = AudioBuffer.prototype.getChannelData;
-            Object.defineProperty(AudioBuffer.prototype, 'getChannelData', {
-                value: function(channel) {
-                    const results = getChannelData.apply(this, [channel]);
-                    // Add tiny noise
-                    for (let i = 0; i < results.length; i += 100) {
-                        results[i] += (Math.random() * 0.0000001) - 0.00000005;
-                    }
-                    return results;
-                }
-            });
-        """)
+        # 5. WebGL Vendor/Renderer - DISABLED
+        # await context.add_init_script("""
+        #     const getParameter = WebGLRenderingContext.prototype.getParameter;
+        #     WebGLRenderingContext.prototype.getParameter = function(parameter) {
+        #         // UNMASKED_VENDOR_WEBGL
+        #         if (parameter === 37445) {
+        #             return 'Intel Inc.';
+        #         }
+        #         // UNMASKED_RENDERER_WEBGL
+        #         if (parameter === 37446) {
+        #             return 'Intel Iris OpenGL Engine';
+        #         }
+        #         return getParameter(parameter);
+        #     };
+        # """)
 
-        # 8. Hardware Concurrency & Memory Spoofing
-        await context.add_init_script("""
-            Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
-            Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-        """)
+        # 6. Canvas Noise Injection - DISABLED for stability in SignupBrowser
+        # await context.add_init_script("""
+        # ... (disabled)
+        # """)
 
-        # 9. Font Enumeration Masking (Basic)
-        await context.add_init_script("""
-            // Mask offsetWidth/offsetHeight for font detection
-            const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
-            const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
-            
-            Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
-                get: function() {
-                    if (this.style.fontFamily) {
-                        // Add slight noise to dimensions if font is being measured
-                        return originalOffsetWidth.get.call(this) + (Math.random() > 0.95 ? 1 : 0);
-                    }
-                    return originalOffsetWidth.get.call(this);
-                }
-            });
-        """)
+
+        # 7. AudioContext Noise - DISABLED for stability in SignupBrowser
+        # await context.add_init_script(...)
+
+
+        # 8. Hardware Concurrency & Memory Spoofing - DISABLED for stability
+        # await context.add_init_script("""
+        #     Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
+        #     Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+        # """)
+
+
+        # 9. Font Enumeration Masking (Basic) - DISABLED for stability
+        # await context.add_init_script(...)
+
 
         # 10. WebRTC IP Leak Protection (Smart Mocking)
-        # Instead of disabling (which is suspicious/breaks functionality), we mock the API to return no candidates.
+        # Instead of disabling (which breaks signup), we mock the API to return no candidates.
         await context.add_init_script("""
             // Keep the original classes just in case, but usually we overwrite.
             const originalRTC = window.RTCPeerConnection;
@@ -267,27 +215,55 @@ class StealthBrowser:
             }
         """)
 
-    async def _inject_signature_scripts(self):
-        # Load JS files from tiktok-signature/javascript
+
+    async def _setup_signer_page(self):
+        """
+        Creates an isolated page for signature generation to avoid conflicts with main page scripts.
+        """
+        self.signer_page = await self.context.new_page()
+        
+        # Block external JS on this page to prevent conflicts and speed up loading
+        # BUT: We must allow our own injected scripts to run. 
+        # add_init_script runs before anything else, so it should work even if we block network JS.
+        await self.signer_page.route("**/*.js", lambda route: route.abort())
+        
+        # Load scripts content
         base_path = os.path.join(os.path.dirname(__file__), "tiktok-signature", "javascript")
         scripts = ["signer.js", "webmssdk.js", "xbogus.js"]
         
         for script in scripts:
             path = os.path.join(base_path, script)
             if os.path.exists(path):
-                await self.context.add_init_script(path=path)
+                # add_init_script is robust against CSP and runs in the page context successfully
+                await self.signer_page.add_init_script(path=path)
             else:
                 print(f"Warning: Signature script not found: {path}")
 
-        # Add helper functions
-        await self.context.add_init_script("""
+        # Add helper functions as init script too
+        await self.signer_page.add_init_script("""
             window.generateSignature = function(url) {
-                if (typeof window.byted_acrawler === "undefined" || typeof window.byted_acrawler.sign !== "function") {
-                    return null;
-                }
-                return window.byted_acrawler.sign({ url: url });
+                try {
+                    if (typeof window.byted_acrawler === "undefined" || typeof window.byted_acrawler.sign !== "function") {
+                        return null;
+                    }
+                    return window.byted_acrawler.sign({ url: url });
+                } catch (e) { return null; }
+            };
+            window.generateBogus = function(url, userAgent) {
+                try {
+                    if (typeof window.window.sign !== "function") {
+                        return null;
+                    }
+                    return window.window.sign(url, userAgent);
+                } catch (e) { return null; }
             };
         """)
+
+        try:
+            # Navigate to a simple page on TikTok to set Origin/Cookies and trigger init scripts.
+            await self.signer_page.goto("https://www.tiktok.com/legal/page/row/privacy-policy/en", wait_until="domcontentloaded", timeout=30000)
+        except Exception as e:
+            print(f"Signer page navigation warning: {e}")
 
     async def load_cookies(self, filename):
         if self.guest_mode:
@@ -316,42 +292,150 @@ class StealthBrowser:
         save_cookies_to_file(cookies, filename)
 
     async def get_signature(self, url):
-        # Ensure we are on a page (even if blank)
-        if not self.page:
-            self.page = await self.context.new_page()
-        
-        # We might need to navigate to a domain to set cookies/context correctly for signing?
-        # Usually signature generation is purely JS based, but some checks might look at origin.
-        # For now, assume we are already on tiktok.com or similar from login/setup.
-        
-        # Execute signature generation in page context
+        # Use our isolated signer page
+        if not hasattr(self, 'signer_page') or not self.signer_page:
+            # Fallback if somehow not initialized, though start() should have done it
+            await self._setup_signer_page()
+            
+        # Check if 'verifyFp' is already in URL
+        if "verifyFp=" not in url:
+             verify_fp = "verify_k6M3D9v8_5jJ2_4K8L_9N0P_Q1R2S3T4U5V6"
+             if "?" in url:
+                 new_url = f"{url}&verifyFp={verify_fp}"
+             else:
+                 new_url = f"{url}?verifyFp={verify_fp}"
+        else:
+             new_url = url
+             try:
+                 # Extract verifyFp for return
+                 import urllib.parse
+                 parsed = urllib.parse.urlparse(new_url)
+                 params = urllib.parse.parse_qs(parsed.query)
+                 verify_fp = params.get("verifyFp", [""])[0]
+             except:
+                 verify_fp = ""
+
+        # Execute signature generation in SIGNER context
         try:
-            # 1. VerifyFP (can be generated in python or JS, let's use a simple JS one or pass it)
-            verify_fp = "verify_k6M3D9v8_5jJ2_4K8L_9N0P_Q1R2S3T4U5V6" # Placeholder or generate dynamic
-            
-            new_url = f"{url}&verifyFp={verify_fp}"
-            
             # 2. Signature
-            signature = await self.page.evaluate(f'window.generateSignature("{new_url}")')
+            signature = await self.signer_page.evaluate(f'window.generateSignature("{new_url}")')
             
             # 3. X-Bogus
-            signed_url = f"{new_url}&_signature={signature}"
-            query_string = signed_url.split("?")[1] if "?" in signed_url else ""
+            if "?" in new_url:
+                query_string = new_url.split("?", 1)[1]
+            else:
+                query_string = ""
+                
             user_agent = self.user_agent
-            
-            bogus = await self.page.evaluate(f'window.generateBogus("{query_string}", "{user_agent}")')
+            bogus = await self.signer_page.evaluate(f'window.generateBogus("{query_string}", "{user_agent}")')
             
             return {
                 "signature": signature,
                 "verify_fp": verify_fp,
                 "x_bogus": bogus,
-                "signed_url": f"{signed_url}&X-Bogus={bogus}"
+                "signed_url": f"{new_url}&X-Bogus={bogus}&_signature={signature}"
             }
         except Exception as e:
             print(f"Signature generation failed: {e}")
             return None
 
+
+    async def request_email_code(self, email):
+        """
+        Requests a verification code for the given email using the Web API.
+        """
+        api_url = "https://www.tiktok.com/passport/web/email/send_code/"
+        
+        # Navigate to home to ensure cookies/fp
+        if not self.page.url or "tiktok.com" not in self.page.url:
+            try:
+                await self.page.goto("https://www.tiktok.com/signup", timeout=30000)
+            except:
+                pass
+
+        cookies = await self.context.cookies()
+        ms_token = next((c["value"] for c in cookies if c["name"] == "msToken"), "")
+        did = next((c["value"] for c in cookies if c["name"] == "tt_webid_v2"), "") 
+        # s_v_web_id often acts as verifyFp in web context
+        existing_fp = next((c["value"] for c in cookies if c["name"] == "s_v_web_id"), "")
+
+        params = {
+            "aid": 1459,
+            "language": "en",
+            "app_language": "en",
+            "region": "IE", 
+            "msToken": ms_token,
+            "account_sdk_source": "web",
+            "multi_login": 1,
+        }
+        if did:
+            params["did"] = did
+            
+        if existing_fp:
+            verify_fp = existing_fp
+        else:
+            # Add random verifyFp if not present in cookies
+            chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+            verify_fp = "verify_" + "".join(random.choices(chars, k=36))
+        
+        params["verifyFp"] = verify_fp
+
+        # Build query for signature
+        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+        url_to_sign = f"{api_url}?{query_string}"
+        
+        sig_data = await self.get_signature(url_to_sign)
+        if not sig_data:
+            print("[-] Failed to sign request")
+            return None
+            
+        params["X-Bogus"] = sig_data["x_bogus"]
+        params["_signature"] = sig_data["signature"]
+        
+        # Prepare Body
+        data = {
+            "email": email,
+            "type": 34,
+            "aid": 1459,
+            "mix_mode": 1,
+            "fixed_mix_mode": 1,
+            "email_logic_type": 2,
+            "account_sdk_source": "web"
+        }
+        if did:
+            data["did"] = did
+            
+        # Setup headers to look authentic
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": self.user_agent,
+            "Referer": "https://www.tiktok.com/signup",
+        }
+        if hasattr(self, 'locale') and self.locale:
+            headers["Accept-Language"] = f"{self.locale},en;q=0.9"
+
+        print(f"Sending code to {email}...")
+        try:
+            # page.request shares the browser/context proxy and cookies
+            response = await self.page.request.post(
+                api_url,
+                params=params,
+                data=data,
+                headers=headers
+            )
+            result = await response.json()
+            return result
+        except Exception as e:
+            print(f"API Request Exception: {e}")
+            return None
+
+
     async def close(self):
+        if hasattr(self, 'signer_page') and self.signer_page:
+            try:
+                await self.signer_page.close()
+            except:
+                pass
         if self.context:
             await self.context.close()
         if self.browser:
