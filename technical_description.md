@@ -147,7 +147,19 @@ Implementiert den Reverse-Engineered Upload-Flow der TikTok Web-Version.
         *   `POST /tiktok/web/project/post/v1/`: Veröffentlicht das Video.
         *   **Return**: Gibt bei Erfolg die `video_id` (Vid) zurück.
 
-#### D. Metadata Spoofing (`metadata_spoofing.py`)
+#### D. Warmup Engine (`warmup.py`)
+Simuliert menschliches Verhalten, um den "Trust Score" neuer Accounts zu erhöhen.
+*   **Klasse**: `WarmupBrowser` (erbt von `StealthBrowser`).
+*   **Methoden**: `human_scroll`, `human_mouse_move`, `maybe_like_video`.
+*   **Ablauf**:
+    1.  Navigiert zur For You Page.
+    2.  Loop für X Minuten:
+        *   Schaut Video (zufällig 5-25s).
+        *   Führt mit geringer Wahrscheinlichkeit Mausbewegungen oder Likes aus.
+        *   Scrollt weiter (variabler Speed).
+    3.  Sendet am Ende POST-Request an `callback_url` (falls definiert).
+
+#### E. Metadata Spoofing (`metadata_spoofing.py`)
 Bereinigt und manipuliert Video-Metadaten vor dem Upload.
 *   **Profiles**: Liste von echten Geräten (z.B. iPhone 15 Pro Max, iOS 17.4).
 *   **Locations**: Liste von Großstädten mit ISO6709 Koordinaten.

@@ -45,6 +45,7 @@ This project provides a FastAPI-based API to automate the uploading of videos to
     *   **Fingerprinting Protection**: Spoofs WebGL Vendor (Intel Iris), Canvas noise, AudioContext noise, and Font enumeration.
     *   **Hardware Spoofing**: Masks true CPU cores and RAM (reports 4 cores, 8GB RAM).
     *   **Signer Isolation**: Runs signature scripts in a separate, isolated background page to prevent interference with the main TikTok site.
+    *   **Account Warmup**: Automated warmup system (`WarmupBrowser`) that simulates human behavior (watching, scrolling, liking) to increase account trust and prevent shadowbans.
 
 ## 2. Prerequisites
 
@@ -418,6 +419,35 @@ Use this endpoint to scrape public video metrics (views, likes, comments, shares
 
 *   `status`: `success`, `video_removed`, `processing`, `scrape_failed`, or `error`.
 *   `data`: Contains the metrics if status is `success`.
+
+### Account Warmup Endpoint
+
+`POST http://your_server_ip:8000/warmup`
+
+Starts a background process to warm up an account by mimicking human behavior (scrolling `For You` feed, watching videos, random likes/mouse moves).
+
+#### Request Parameters
+
+*   `session_file` (File): The TikTok session cookie file.
+*   `proxy` (String): The proxy string (`user:pass@host:port`).
+*   `duration_minutes` (Integer, optional, default: `15`): Duration of the warmup session.
+*   `callback_url` (String, optional): A webhook URL to receive the result JSON upon completion.
+*   `X-Upload-Auth` (Header): Upload secret.
+
+#### Webhook Payload (on completion)
+
+```json
+{
+  "status": "success",
+  "proxy": "...",
+  "session": "...",
+  "actions": {
+    "watched_seconds": 840,
+    "scrolls": 50,
+    "likes": 2
+  }
+}
+```
 
 #### Example cURL
 
