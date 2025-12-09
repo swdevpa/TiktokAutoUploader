@@ -286,6 +286,8 @@ The API expects a `multipart/form-data` request with the following fields:
 *   `brand_organic_type` (Integer, optional, default: `0`): `0` for non-branded, `1` for branded.
 *   `branded_content_type` (Integer, optional, default: `0`): `0` for non-branded, `1` for branded.
 *   `ai_label` (Integer, optional, default: `0`): `0` for no AI label, `1` for AI-generated content label.
+*   `proxy` (String, optional): Proxy string to use for the upload (e.g., `user:pass@host:port`).
+*   `datacenter` (String, optional): Specific datacenter preference (if supported by backend logic).
 
 ### Response
 

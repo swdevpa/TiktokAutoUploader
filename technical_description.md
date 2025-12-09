@@ -31,6 +31,7 @@ Die API dient als zentraler Einstiegspunkt für externe Dienste (z.B. Auto-Worke
         *   `brand_organic_type`, `branded_content_type` (Int): Flags für Werbekennzeichnung.
         *   `ai_label` (Int): 1=AI Generated Content.
         *   `proxy` (String): Optionaler Proxy (`user:pass@host:port`).
+        *   `datacenter` (String): Optionaler Datacenter-Parameter.
     *   **Response**: JSON `{"message": "Video uploaded successfully!", "video_id": "..."}` oder HTTP 500 bei Fehler.
 
     #### `POST /fadein-from-image`
@@ -40,8 +41,40 @@ Die API dient als zentraler Einstiegspunkt für externe Dienste (z.B. Auto-Worke
 
     #### `POST /api/v1/analytics/scrape`
     Stateless Endpoint zum scrapen von Video-Metriken (Views, Likes, etc.) im Guest-Mode.
-    *   **Payload**: JSON Liste von Tasks (`video_url`, `proxy`).
-    *   **Logik**: Startet `StealthBrowser` im Guest-Mode (ohne Cookies), navigiert zur URL, extrahiert Daten aus `SIGI_STATE` JSON oder via CSS-Selektoren.
+    *   **Payload** (JSON):
+        ```json
+        {
+          "tasks": [
+            {
+              "id": "unique_id_1",
+              "video_url": "https://www.tiktok.com/@user/video/123",
+              "proxy": "user:pass@host:port" // Optional
+            }
+          ]
+        }
+        ```
+    *   **Response** (JSON):
+        ```json
+        {
+          "results": [
+            {
+              "id": "unique_id_1",
+              "status": "success", // success, video_removed, error, processing, scrape_failed
+              "data": {
+                "play_count": 1000,
+                "digg_count": 100,
+                "comment_count": 10,
+                "share_count": 5
+              },
+              "error_message": null
+            }
+          ]
+        }
+        ```
+    *   **Logik**: Startet `StealthBrowser` im Guest-Mode (ohne Cookies), navigiert zur URL und extrahiert Daten.
+        1.  Versucht JSON (`SIGI_STATE` oder `Universal Data`) zu parsen (zuverlässiger).
+        2.  Fallback auf CSS-Selektoren (`[data-e2e="like-count"]` etc.) wenn JSON fehlt.
+        3.  Erkennt "Video nicht verfügbar", Captchas oder andere Fehlerzustände.
     *   **Concurrency**: Limitiert durch `SCRAPE_CONCURRENCY_LIMIT` (Default: 5).
 
 ### 2.2 Command Line Interface (`cli.py`)
