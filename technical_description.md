@@ -93,7 +93,7 @@ Die kritischste Komponente für die Umgehung von Bot-Erkennung.
 *   **Technologie**: Microsoft Playwright (Chromium).
 *   **Browser-Argumente**: `--disable-blink-features=AutomationControlled`, `--no-sandbox`, `--disable-infobars`.
 *   **Guest Mode**: Optionaler Modus (`guest_mode=True`), der das Laden von Cookies verhindert und eine saubere Session garantiert.
-*   **Proxy-Detection**: Fragt `http://ip-api.com/json` ab, um Zeitzone, Locale und Geolocation des Proxies zu ermitteln und den Browser-Kontext (`browser.new_context`) exakt darauf einzustellen.
+*   **Proxy-Detection**: Fragt `http://ip-api.com/json` ab, um Locale und Geolocation zu ermitteln. Setzt Zeitzone basierend auf Proxy oder manuellem Override (`--timezone`).
 *   **Stealth-Injections (JavaScript)**:
     1.  **Navigator**: Überschreibt `navigator.webdriver` mit `undefined`.
     2.  **Chrome Object**: Mockt `window.chrome`.
@@ -106,9 +106,22 @@ Die kritischste Komponente für die Umgehung von Bot-Erkennung.
     7.  **AudioContext Noise**: Modifiziert `getChannelData` mit minimalem Rauschen.
     8.  **Hardware Spoofing**: `hardwareConcurrency` = 4, `deviceMemory` = 8.
     9.  **Font Enumeration**: Fügt Rauschen zu `offsetWidth`/`offsetHeight` hinzu.
-    10. **WebRTC**: Entfernt `RTCPeerConnection` Objekte.
+    10. **Smart WebRTC Mocking**: Anstatt WebRTC komplett zu deaktivieren (was ein starkes Bot-Signal ist), wird die `RTCPeerConnection` API gemockt. Sie ist vorhanden und ausführbar, liefert aber keine ICE-Kandidaten zurück (Empty Candidate List). Dies verhindert IP-Leaks (selbst wenn der Proxy kein UDP unterstützt), ohne dass die Browser-Fingerprinting-Checks fehlschlagen.
 
-#### B. Upload Logic (`tiktok.py`)
+#### B. Signup Browser (`SignupBrowser.py`) - New in v2.2
+Eine spezialisierte Erweiterung des StealthBrowsers für die Account-Erstellung, optimiert für maximale Unauffälligkeit und Stabilität.
+*   **Architektur-Besonderheit (Isolated Signer)**:
+    *   Um Konflikte zwischen TikToks Frontend-Skripten und unseren Signatur-Skripten (`signer.js`, `xbogus.js`) zu vermeiden, wird eine separate, isolierte Browser-Page (`signer_page`) im Hintergrund geöffnet.
+    *   Diese Seite ("about:blank" oder statische TikTok-Seite) führt die kryptographischen Berechnungen (`X-Bogus`, `_signature`, `verifyFp`) isoliert durch.
+    *   Das Hauptfenster bleibt sauber von injizierten Skripten und wirkt für TikTok wie ein normaler User-Browser.
+*   **Web API Integration**:
+    *   Kann Verifizierungscodes direkt über die TikTok Web-API (`/passport/web/email/send_code/`) anfordern, um UI-Probleme zu umgehen.
+    *   Nutzt dabei den `s_v_web_id` Cookie der aktuellen Session als `verifyFp`, um Session-Konsistenz zu gewährleisten.
+*   **SOCKS5 & Whitelisting**:
+    *   Unterstützt natives SOCKS5 für UDP-Tunneling.
+    *   *Wichtig*: Da Chromium SOCKS5-Authentifizierung via URL (`user:pass`) nicht unterstützt, wird IP-Whitelisting empfohlen. Das Skript nutzt dann `socks5://IP:PORT` für eine direkte, ungedrosselte Verbindung.
+
+#### C. Upload Logic (`tiktok.py`)
 Implementiert den Reverse-Engineered Upload-Flow der TikTok Web-Version.
 *   **Methode**: `upload_video(...)`
 *   **Ablauf**:
@@ -127,13 +140,11 @@ Implementiert den Reverse-Engineered Upload-Flow der TikTok Web-Version.
         *   `POST ...?Action=CommitUploadInner`: Bestätigt Upload beim VOD-Service.
     6.  **Publishing**:
         *   Erstellt Payload mit `post_common_info` (Privacy, Schedule) und `single_post_req_list` (Titel).
-        *   **Signature Generation**: Ruft `window.generateSignature(url)` im Browser-Kontext auf.
-            *   Nutzt injizierte Skripte: `signer.js`, `webmssdk.js`, `xbogus.js`.
-            *   Generiert `_signature`, `X-Bogus`, `verifyFp`.
+        *   **Signature Generation**: Ruft `window.generateSignature(url)` im isolierten `signer_page` Kontext auf.
         *   `POST /tiktok/web/project/post/v1/`: Veröffentlicht das Video.
         *   **Return**: Gibt bei Erfolg die `video_id` (Vid) zurück.
 
-#### C. Metadata Spoofing (`metadata_spoofing.py`)
+#### D. Metadata Spoofing (`metadata_spoofing.py`)
 Bereinigt und manipuliert Video-Metadaten vor dem Upload.
 *   **Profiles**: Liste von echten Geräten (z.B. iPhone 15 Pro Max, iOS 17.4).
 *   **Locations**: Liste von Großstädten mit ISO6709 Koordinaten.

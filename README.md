@@ -38,12 +38,13 @@ This project provides a FastAPI-based API to automate the uploading of videos to
 *   **YouTube Download**: Directly download and upload videos from YouTube URLs.
 *   **Desktop GUI**: A user-friendly graphical interface for managing uploads and users.
 *   **CLI Support**: Command-line interface for scripting and headless operations.
-*   **Advanced Stealth Architecture (v2.1)**:
-    *   **Dynamic Proxy Sync**: Automatically detects proxy location and synchronizes browser Timezone, Locale, and Geolocation to match.
+*   **Advanced Stealth Architecture (v2.2)**:
+    *   **Smart WebRTC Mocking**: Instead of blocking WebRTC (which can trigger anti-fraud checks), the system mocks the API to appear functional but returns no IP candidates, effectively hiding your local IP without raising flags.
+    *   **Dynamic Proxy Sync**: Automatically detects proxy location and synchronizes browser Locale and Geolocation.
+    *   **Timezone Force-Override**: Allows manual enforcement of a specific timezone (e.g., "America/Chicago") ensuring it perfectly matches your proxy's Geo-IP data.
     *   **Fingerprinting Protection**: Spoofs WebGL Vendor (Intel Iris), Canvas noise, AudioContext noise, and Font enumeration.
     *   **Hardware Spoofing**: Masks true CPU cores and RAM (reports 4 cores, 8GB RAM).
-    *   **WebRTC Protection**: Disables WebRTC to prevent IP leaks.
-    *   **Human-Like Behavior**: Capable of non-linear mouse movements and variable typing speeds (available for future UI-based features).
+    *   **Signer Isolation**: Runs signature scripts in a separate, isolated background page to prevent interference with the main TikTok site.
 
 ## 2. Prerequisites
 
