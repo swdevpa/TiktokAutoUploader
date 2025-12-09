@@ -49,6 +49,106 @@ async def login(login_name: str):
         
     return True
 
+async def create_account(proxy: str, save_name: str, timezone: str = None):
+    """
+    Launches a browser to create a new account with strict safety checks.
+    """
+    if not proxy:
+        print("[-] Error: A proxy is REQUIRED for account creation to ensure safety.")
+        return False
+        
+    print(f"Initializing for ACCOUNT CREATION with proxy: {proxy}")
+    
+    # 1. Start Browser (Headed)
+    async with StealthBrowser(headless=False, proxy=proxy, timezone_id=timezone) as browser:
+        
+        # 2. Pre-flight Safety Check
+        print("Performing Safety Pre-flight Check...")
+        try:
+            # Check IP location
+            check_page = await browser.page.context.new_page()
+            response = await check_page.goto("http://ip-api.com/json", timeout=15000)
+            data = await response.json()
+            
+            country_code = data.get("countryCode")
+            ip = data.get("query")
+            
+            print(f"DETECTED LOCATION: {data.get('city')}, {data.get('country')} ({country_code}) - IP: {ip}")
+            
+            # KILL SWITCH: Abort if Germany (DE) is detected
+            if country_code == "DE":
+                print("\n!!! CRITICAL SECURITY ALERT !!!")
+                print(f"Detected Country is GERMANY ({country_code}).")
+                print("ABORTING IMMEDIATELY TO PROTECT IDENTITY.")
+                return False
+                
+            await check_page.close()
+            
+        except Exception as e:
+            print(f"\n!!! SAFETY CHECK FAILED: {e}")
+            print("ABORTING DUE TO FAILED SAFETY CHECK.")
+            return False
+
+        # 3. Visual Confirmation
+        print("Opening Safety Verification Page...")
+        try:
+            # Open whoer.net for visual verification
+            await browser.page.goto("https://whoer.net", timeout=60000)
+        except Exception as e:
+            print(f"Warning: Could not load whoer.net: {e}")
+
+        print("\n" + "="*60)
+        print("PLEASE VISUALLY VERIFY THE BROWSER WINDOW")
+        print("1. Check IP, DNS, and WebRTC status on whoer.net (or checks displayed)")
+        print("2. Ensure everything is GREEN and location is correct.")
+        print("="*60)
+        
+        # We need to pause here. Since this is async and likely running in a terminal, 
+        # we can use input().
+        confirm = input("Type 'SAFE' to proceed to TikTok, or anything else to ABORT: ")
+        if confirm.strip().upper() != "SAFE":
+            print("Aborted by user.")
+            return False
+
+        # 4. Navigate to TikTok Signup
+        print("Safety confirmed. Navigating to TikTok Signup...")
+        await browser.page.goto("https://www.tiktok.com/signup", timeout=60000)
+        
+        print("Please complete the signup process in the browser.")
+        print("Waiting for 'sessionid' cookie (Login Success)...")
+        
+        # 5. Wait for session
+        logged_in = False
+        session_file = f"tiktok_session-{save_name}"
+        
+        # Loop until sessionid found or browser closed
+        while True:
+            if browser.context.pages == 0: # Check if all pages closed
+                 print("Browser closed by user.")
+                 break
+            
+            try:
+                cookies = await browser.context.cookies()
+                for cookie in cookies:
+                    if cookie["name"] == "sessionid":
+                        logged_in = True
+                        break
+            except Exception:
+                pass
+            
+            if logged_in:
+                print(f"Login Detected! Saving session to {session_file}...")
+                await browser.save_cookies(session_file)
+                # Wait a bit for other cookies
+                await asyncio.sleep(3)
+                await browser.save_cookies(session_file) # Save again to be sure
+                print("Session saved successfully.")
+                break
+                
+            await asyncio.sleep(2)
+            
+    return logged_in
+
 async def upload_video(session_file_path, video, title, schedule_time=0, allow_comment=1, allow_duet=0, allow_stitch=0, visibility_type=0, brand_organic_type=0, branded_content_type=0, ai_label=0, proxy=None, datacenter=None, status_callback=None):
     """
     Uploads a video to TikTok using StealthBrowser (Playwright).

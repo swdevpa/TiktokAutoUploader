@@ -8,10 +8,11 @@ from playwright.async_api import async_playwright, Page, BrowserContext
 from .cookies import load_cookies_from_file, save_cookies_to_file
 
 class StealthBrowser:
-    def __init__(self, headless=True, proxy=None, guest_mode=False):
+    def __init__(self, headless=True, proxy=None, guest_mode=False, timezone_id=None):
         self.headless = headless
         self.proxy = proxy
         self.guest_mode = guest_mode
+        self.timezone_id = timezone_id
         self.playwright = None
         self.browser = None
         self.context = None
@@ -52,7 +53,12 @@ class StealthBrowser:
         locale = "en-US"
         geolocation = None
         
-        if proxy_config:
+        if self.timezone_id:
+             print(f"Using manual timezone override: {self.timezone_id}")
+             timezone_id = self.timezone_id
+             # We still might want locale from proxy if not set, but let's stick to IP-API for locale 
+             # unless we want to override that too. For now, timezone is the critical one.
+        elif proxy_config:
             print("Detecting proxy location...")
             try:
                 proxy_info = await self._detect_proxy_settings(proxy_config)
@@ -75,6 +81,9 @@ class StealthBrowser:
             "has_touch": True,
             "is_mobile": False,
             "permissions": ["geolocation"],
+            "extra_http_headers": {
+                "DNT": "1" # DNT: 1 means "Do Not Track"
+            }
         }
         
         if geolocation:
@@ -95,6 +104,9 @@ class StealthBrowser:
         await context.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => undefined
+            });
+            Object.defineProperty(navigator, 'doNotTrack', {
+                get: () => "1"
             });
         """)
 

@@ -14,6 +14,12 @@ if __name__ == "__main__":
     login_parser = subparsers.add_parser("login", help="Login into TikTok to extract the session id (stored locally)")
     login_parser.add_argument("-n", "--name", help="Name to save cookie as", required=True)
 
+    # Signup/Create subcommand
+    signup_parser = subparsers.add_parser("signup", help="Create a new TikTok account with safety checks")
+    signup_parser.add_argument("-p", "--proxy", help="Proxy URL (required)", required=True)
+    signup_parser.add_argument("-n", "--name", help="Name to save new session as", required=True)
+    signup_parser.add_argument("-tz", "--timezone", help="Manually override timezone (e.g., America/Chicago)")
+
     # Upload subcommand.
     upload_parser = subparsers.add_parser("upload", help="Upload video on TikTok")
     upload_parser.add_argument("-u", "--users", help="Enter cookie name from login", required=True)
@@ -48,6 +54,10 @@ if __name__ == "__main__":
         # Name of file to save the session id.
         import asyncio
         asyncio.run(tiktok.login(login_name))
+
+    elif args.subcommand == "signup":
+        import asyncio
+        asyncio.run(tiktok.create_account(args.proxy, args.name, args.timezone))
 
     elif args.subcommand == "upload":
         # Obtain session id from the cookie name.
