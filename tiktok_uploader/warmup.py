@@ -241,6 +241,56 @@ class WarmupBrowser(StealthBrowser):
         await asyncio.sleep(random.uniform(0.05, 0.1))
         await self.page.mouse.up()
 
+    async def maybe_like_video(self):
+        """
+        Tries to find a like button and click it. 
+        Note: Probability checks are handled by the caller (run_warmup).
+        """
+        try:
+            # Try multiple selectors for the like button
+            # 1. data-e2e="like-icon" (Standard)
+            # 2. span[data-e2e="like-icon"] (Specific)
+            # 3. button[aria-label^="Like"] (Accessibility)
+            selectors = [
+                '[data-e2e="like-icon"]',
+                '[data-e2e="feed-like-icon"]',
+                'div[data-e2e="like-icon"]',
+            ]
+            
+            btn = None
+            for sel in selectors:
+                btns = await self.page.query_selector_all(sel)
+                if btns:
+                    # Filter for visible buttons only? 
+                    # For simplicity, pick the first or second one as they are likely in viewport
+                    btn = btns[0] 
+                    if len(btns) > 1:
+                        btn = btns[min(1, len(btns)-1)]
+                    break
+            
+            if btn:
+                logger.info("Like button found, attempting click...")
+                await self.human_click_element(btn)
+                self.actions_performed["likes"] += 1
+                logger.info("Liked a video.")
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+            else:
+                # Fallback: Double click on the video container to like
+                video_container = await self.page.query_selector('div[data-e2e="feed-video"]')
+                if video_container:
+                     # Double click center of video
+                     logger.info("Like button not found, attempting double-tap like...")
+                     box = await video_container.bounding_box()
+                     if box:
+                         await self.page.mouse.dblclick(box["x"] + box["width"]/2, box["y"] + box["height"]/2)
+                         self.actions_performed["likes"] += 1
+                         logger.info("Liked a video (double-tap).")
+                else:
+                    logger.debug("Wanted to like, but no button or video container found.")
+
+        except Exception as e:
+            logger.warning(f"Error attempting like: {e}")
+
 
     async def run_warmup(self, duration_minutes: int):
         logger.info(f"Starting ADVANCED Warmup Protocol for {duration_minutes}m.")
