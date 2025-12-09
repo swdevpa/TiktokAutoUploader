@@ -62,11 +62,19 @@ class SignupBrowser:
                 print(f"Failed to detect proxy settings: {e}")
                 
         if detected_settings:
-            timezone_id = detected_settings.get("timezone", timezone_id)
+            # Use detected locale/geo
             locale = detected_settings.get("locale", locale)
             if "lat" in detected_settings and "lon" in detected_settings:
                 geolocation = {"latitude": detected_settings["lat"], "longitude": detected_settings["lon"]}
-            print(f"Proxy detected: {timezone_id} | {locale}")
+            
+            # Use detected timezone UNLESS manual override is provided
+            if self.timezone_id:
+                print(f"Using manual timezone override: {self.timezone_id} (Detected: {detected_settings.get('timezone')})")
+                timezone_id = self.timezone_id
+            else:
+                timezone_id = detected_settings.get("timezone", timezone_id)
+            
+            print(f"Final Configuration: {timezone_id} | {locale}")
             
         elif self.timezone_id:
              print(f"Using manual timezone override (Detection failed): {self.timezone_id}")
