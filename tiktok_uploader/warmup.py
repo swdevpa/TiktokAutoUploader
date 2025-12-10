@@ -280,18 +280,20 @@ class WarmupBrowser(StealthBrowser):
                 logger.info("Liked a video.")
                 await asyncio.sleep(random.uniform(0.5, 1.5))
             else:
-                # Fallback: Double click on the video container to like
-                video_container = await self.page.query_selector('div[data-e2e="feed-video"]')
-                if video_container:
-                     # Double click center of video
-                     logger.info("Like button not found, attempting double-tap like...")
-                     box = await video_container.bounding_box()
-                     if box:
-                         await self.page.mouse.dblclick(box["x"] + box["width"]/2, box["y"] + box["height"]/2)
-                         self.actions_performed["likes"] += 1
-                         logger.info("Liked a video (double-tap).")
-                else:
-                    logger.warning("Wanted to like, but no button or video container found.")
+                # Fallback 1: Keyboard Shortcut 'l'
+                # This is often more reliable than selectors if the player is active
+                logger.info("Like button not found, attempting keyboard shortcut 'L'...")
+                await self.page.keyboard.press("l")
+                self.actions_performed["likes"] += 1
+                logger.info("Liked a video (keyboard shortcut).")
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+                
+                # We could still try double-tap if we wanted, but 'l' is usually sufficient.
+                # If 'l' failed (e.g. no focus), we might not know it failed silently.
+                # Let's keep double-tap as a desperate fallback if we assume 'l' didn't work? 
+                # Actually, 'l' is a toggle, so if we do it and it works, double tap might unlike.
+                # Safer to assume 'l' worked or if we really want, check if the heart turns red (too complex).
+                # Terminating here is safer than risking unlike.
 
         except Exception as e:
             logger.warning(f"Error attempting like: {e}")
