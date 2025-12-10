@@ -11,7 +11,7 @@ logger = logging.getLogger("warmup")
 
 # Configuration (Point 5 of Spec)
 WARMUP_CONFIG = {
-    "global_like_rate": 1.0,
+    "global_like_rate": 0.12,
     "interaction_gate_threshold": 0.7,
     "scroll_back_probability": 0.015,
     "watch_patterns": {
