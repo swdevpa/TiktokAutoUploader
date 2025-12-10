@@ -99,6 +99,9 @@ class WarmupBrowser(StealthBrowser):
             remaining = end_time - time.time()
             if remaining <= 0: break
             await asyncio.sleep(min(sleep_chunk, remaining))
+            
+            # Count the move
+            self.actions_performed["mouse_moves"] += 1
 
     async def get_video_content_info(self):
         """
@@ -240,6 +243,8 @@ class WarmupBrowser(StealthBrowser):
         await self.page.mouse.down()
         await asyncio.sleep(random.uniform(0.05, 0.1))
         await self.page.mouse.up()
+        
+        self.actions_performed["mouse_moves"] += 1
 
     async def maybe_like_video(self):
         """
@@ -286,7 +291,7 @@ class WarmupBrowser(StealthBrowser):
                          self.actions_performed["likes"] += 1
                          logger.info("Liked a video (double-tap).")
                 else:
-                    logger.debug("Wanted to like, but no button or video container found.")
+                    logger.warning("Wanted to like, but no button or video container found.")
 
         except Exception as e:
             logger.warning(f"Error attempting like: {e}")
