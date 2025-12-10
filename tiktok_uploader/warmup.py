@@ -13,7 +13,7 @@ logger = logging.getLogger("warmup")
 WARMUP_CONFIG = {
     "global_like_rate": 0.12,
     "interaction_gate_threshold": 0.7,
-    "scroll_back_probability": 0.015,
+    "scroll_back_probability": 0.04,
     "watch_patterns": {
         "instant_skip_weight": 0.4,
         "drop_off_weight": 0.4,
