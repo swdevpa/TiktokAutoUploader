@@ -114,22 +114,21 @@ class SignupBrowser:
 
     async def _apply_stealth(self, context: BrowserContext):
         pass
-        # 1. Remove webdriver property - DISABLED per user request (real device)
+        # 1. Remove webdriver property - DISABLED (Local execution)
         # await context.add_init_script("""
         #     Object.defineProperty(navigator, 'webdriver', {
         #         get: () => undefined
         #     });
         # """)
 
-        # 2. Mock chrome object - DISABLED
+        # 2. Mock chrome object - DISABLED (Local execution)
         # await context.add_init_script("""
         #     window.chrome = {
         #         runtime: {}
         #     };
         # """)
 
-
-        # 3. Mock permissions - DISABLED
+        # 3. Mock permissions - DISABLED (Local execution)
         # await context.add_init_script("""
         #     const originalQuery = window.navigator.permissions.query;
         #     return window.navigator.permissions.query = (parameters) => (
@@ -140,7 +139,7 @@ class SignupBrowser:
         # """)
 
 
-        # 4. Mock plugins (basic) - DISABLED
+        # 4. Mock plugins (basic) - DISABLED (Too aggressive)
         # await context.add_init_script("""
         #     Object.defineProperty(navigator, 'plugins', {
         #         get: () => [1, 2, 3, 4, 5]
@@ -148,7 +147,7 @@ class SignupBrowser:
         # """)
 
 
-        # 5. WebGL Vendor/Renderer - DISABLED
+        # 5. WebGL Vendor/Renderer - DISABLED (Too aggressive/mismatch risk)
         # await context.add_init_script("""
         #     const getParameter = WebGLRenderingContext.prototype.getParameter;
         #     WebGLRenderingContext.prototype.getParameter = function(parameter) {
@@ -174,7 +173,7 @@ class SignupBrowser:
         # await context.add_init_script(...)
 
 
-        # 8. Hardware Concurrency & Memory Spoofing - DISABLED for stability
+        # 8. Hardware Concurrency & Memory Spoofing - DISABLED (Stability)
         # await context.add_init_script("""
         #     Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
         #     Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
