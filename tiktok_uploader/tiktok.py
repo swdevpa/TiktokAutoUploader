@@ -20,16 +20,19 @@ from requests_auth_aws_sigv4 import AWSSigV4
 # Load environment variables
 load_dotenv()
 
-async def login(login_name: str):
+async def login(login_name: str, proxy: str = None):
     """
     Logs in to TikTok using StealthBrowser and saves the session.
     """
     session_file = f"tiktok_session-{login_name}"
     
     print(f"Logging in as {login_name}...")
+    if proxy:
+        print(f"Using Proxy: {proxy}")
     
     # Start browser in HEADED mode for user interaction
-    async with StealthBrowser(headless=False) as browser:
+    # User requested to use SignupBrowser for login (more stable)
+    async with SignupBrowser(headless=False, proxy=proxy) as browser:
         await browser.page.goto(os.getenv("TIKTOK_LOGIN_URL", "https://www.tiktok.com/login"), timeout=120000, wait_until='domcontentloaded')
         
         print("Please log in to TikTok in the browser window.")

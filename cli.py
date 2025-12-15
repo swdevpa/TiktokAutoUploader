@@ -13,6 +13,7 @@ if __name__ == "__main__":
     # Login subcommand.
     login_parser = subparsers.add_parser("login", help="Login into TikTok to extract the session id (stored locally)")
     login_parser.add_argument("-n", "--name", help="Name to save cookie as", required=True)
+    login_parser.add_argument("-p", "--proxy", help="Proxy URL (e.g. http://user:pass@host:port)", default=None)
 
     # Signup/Create subcommand
     signup_parser = subparsers.add_parser("signup", help="Create a new TikTok account with safety checks")
@@ -53,7 +54,7 @@ if __name__ == "__main__":
         # Name of file to save the session id.
         # Name of file to save the session id.
         import asyncio
-        asyncio.run(tiktok.login(login_name))
+        asyncio.run(tiktok.login(login_name, args.proxy))
 
     elif args.subcommand == "signup":
         import asyncio
