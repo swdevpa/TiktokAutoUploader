@@ -8,12 +8,25 @@ from playwright.async_api import async_playwright, Page, BrowserContext
 from .cookies import load_cookies_from_file, save_cookies_to_file
 
 class SignupBrowser:
-    def __init__(self, headless=True, proxy=None, guest_mode=False, timezone_id=None, storage_state_path=None):
+    def __init__(self, headless=True, proxy=None, guest_mode=False, timezone_id=None, storage_state_path=None, safe_mode=False):
+        """
+        initializes the SignupBrowser.
+        
+        Args:
+            headless (bool): Run browser in headless mode.
+            proxy (str): Proxy connection string.
+            guest_mode (bool): If True, does not load/save sessions.
+            timezone_id (str): Override timezone.
+            storage_state_path (str): Path to JSON session file.
+            safe_mode (bool): If True, disables aggressive stealth scripts (WebGL/Codec spoofing) 
+                              that may cause crashes during manual interaction (e.g. Signup).
+        """
         self.headless = headless
         self.proxy = proxy
         self.guest_mode = guest_mode
         self.timezone_id = timezone_id
         self.storage_state_path = storage_state_path
+        self.safe_mode = safe_mode
         self.playwright = None
         self.browser = None
         self.context = None
@@ -175,48 +188,50 @@ class SignupBrowser:
 
 
         # 5. WebGL Vendor/Renderer Spoofing
-        await context.add_init_script("""
-            const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                // UNMASKED_VENDOR_WEBGL
-                if (parameter === 37445) {
-                    return 'Google Inc. (Apple)';
-                }
-                // UNMASKED_RENDERER_WEBGL
-                if (parameter === 37446) {
-                    return 'ANGLE (Apple, Apple M1 Pro, OpenGL 4.1)';
-                }
-                return getParameter(parameter);
-            };
+        if not self.safe_mode:
+            await context.add_init_script("""
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    // UNMASKED_VENDOR_WEBGL
+                    if (parameter === 37445) {
+                        return 'Google Inc. (Apple)';
+                    }
+                    // UNMASKED_RENDERER_WEBGL
+                    if (parameter === 37446) {
+                        return 'ANGLE (Apple, Apple M1 Pro, OpenGL 4.1)';
+                    }
+                    return getParameter(parameter);
+                };
 
-            // Aggressive Codec Spoofing to force H264/AAC
-            const originalCanPlayType = HTMLMediaElement.prototype.canPlayType;
-            HTMLMediaElement.prototype.canPlayType = function(type) {
-                if (!type) return '';
-                // Block HEVC and HE-AAC (mp4a.40.29, mp4a.40.5)
-                if (type.includes('hevc') || type.includes('hev1') || type.includes('hvc1') || 
-                    type.includes('mp4a.40.29') || type.includes('mp4a.40.5')) {
-                    return '';
+                // Aggressive Codec Spoofing to force H264/AAC
+                const originalCanPlayType = HTMLMediaElement.prototype.canPlayType;
+                HTMLMediaElement.prototype.canPlayType = function(type) {
+                    if (!type) return '';
+                    // Block HEVC and HE-AAC (mp4a.40.29, mp4a.40.5)
+                    if (type.includes('hevc') || type.includes('hev1') || type.includes('hvc1') || 
+                        type.includes('mp4a.40.29') || type.includes('mp4a.40.5')) {
+                        return '';
+                    }
+                    // Force accept H.264 and AAC-LC
+                    if (type.includes('avc1') || type.includes('mp4a.40.2')) {
+                         return 'probably';
+                    }
+                    return originalCanPlayType.call(this, type);
+                };
+                
+                if (window.MediaSource) {
+                     const originalIsTypeSupported = window.MediaSource.isTypeSupported;
+                     window.MediaSource.isTypeSupported = function(type) {
+                         if (!type) return false;
+                         if (type.includes('hevc') || type.includes('hev1') || type.includes('hvc1') || 
+                             type.includes('mp4a.40.29') || type.includes('mp4a.40.5')) {
+                             return false;
+                         }
+                         return originalIsTypeSupported.call(this, type);
+                     };
                 }
-                // Force accept H.264 and AAC-LC
-                if (type.includes('avc1') || type.includes('mp4a.40.2')) {
-                     return 'probably';
-                }
-                return originalCanPlayType.call(this, type);
-            };
-            
-            if (window.MediaSource) {
-                 const originalIsTypeSupported = window.MediaSource.isTypeSupported;
-                 window.MediaSource.isTypeSupported = function(type) {
-                     if (!type) return false;
-                     if (type.includes('hevc') || type.includes('hev1') || type.includes('hvc1') || 
-                         type.includes('mp4a.40.29') || type.includes('mp4a.40.5')) {
-                         return false;
-                     }
-                     return originalIsTypeSupported.call(this, type);
-                 };
-            }
-        """)
+            """)
+
 
 
         # 7. AudioContext Noise - DISABLED for stability in SignupBrowser

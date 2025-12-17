@@ -41,7 +41,7 @@ async def login(login_name: str, proxy: str = None):
     
     # Start browser in HEADED mode for user interaction
     # User requested to use SignupBrowser for login (more stable)
-    async with SignupBrowser(headless=False, proxy=proxy) as browser:
+    async with SignupBrowser(headless=False, proxy=proxy, safe_mode=True) as browser:
         await browser.page.goto(os.getenv("TIKTOK_LOGIN_URL", "https://www.tiktok.com/login"), timeout=120000, wait_until='domcontentloaded')
         
         print("Please log in to TikTok in the browser window.")
@@ -73,7 +73,7 @@ async def create_account(proxy: str, save_name: str, timezone: str = None):
     print(f"Initializing for ACCOUNT CREATION with proxy: {proxy}")
     
     # 1. Start Browser (Headed)
-    async with SignupBrowser(headless=False, proxy=proxy, timezone_id=timezone) as browser:
+    async with SignupBrowser(headless=False, proxy=proxy, timezone_id=timezone, safe_mode=True) as browser:
         
         # 2. Pre-flight Safety Check
         print("Performing Safety Pre-flight Check...")

@@ -123,6 +123,10 @@ Eine spezialisierte Erweiterung des StealthBrowsers für die Account-Erstellung,
 *   **SOCKS5 & Whitelisting**:
     *   Unterstützt natives SOCKS5 für UDP-Tunneling.
     *   *Wichtig*: Da Chromium SOCKS5-Authentifizierung via URL (`user:pass`) nicht unterstützt, wird IP-Whitelisting empfohlen. Das Skript nutzt dann `socks5://IP:PORT` für eine direkte, ungedrosselte Verbindung.
+    *   **Safe Mode Feature (v2.2.1)**:
+        *   Um Abstürze (SIGSEGV) bei manuellen Interaktionen (Login, Signup) zu verhindern, verfügt die Klasse über einen `safe_mode`.
+        *   Wenn aktiviert (`safe_mode=True`), werden aggressive WebGL- und Codec-Spoofing-Skripte deaktiviert, die bekanntermaßen Instabilität im Rendering-Prozess verursachen können, wenn TikToks Anti-Bot-Checks (z.B. bei E-Mail-Verifikation) greifen.
+        *   Dieser Modus wird automatisch für interaktive CLI-Befehle (`login`, `signup`, `interactive`) genutzt.
 
 #### C. Upload Logic (`tiktok.py`)
 Implementiert den Reverse-Engineered Upload-Flow der TikTok Web-Version.

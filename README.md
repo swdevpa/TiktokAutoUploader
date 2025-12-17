@@ -46,6 +46,7 @@ This project provides a FastAPI-based API to automate the uploading of videos to
     *   **Hardware Spoofing**: Masks true CPU cores and RAM (reports 4 cores, 8GB RAM).
     *   **Signer Isolation**: Runs signature scripts in a separate, isolated background page to prevent interference with the main TikTok site.
     *   **Signer Isolation**: Runs signature scripts in a separate, isolated background page to prevent interference with the main TikTok site.
+    *   **Safe Mode (Stability)**: `SignupBrowser` includes a "Safe Mode" for manual interactions (Login/Signup), essentially disabling aggressive WebGL/Codec spoofing to prevent browser crashes during CAPTCHA or verification challenges.
     *   **Advanced Account Warmup**: Automated warmup system (`WarmupBrowser`) implementing the "Advanced Humanization & Niche Training Protocol". Simulates human behavior with defined archetypes (Engaged, Skip), non-linear mouse paths (Bézier), and niche-specific content interactions.
 
 ## 2. Prerequisites
