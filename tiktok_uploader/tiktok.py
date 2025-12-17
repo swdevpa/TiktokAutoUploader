@@ -24,7 +24,15 @@ async def login(login_name: str, proxy: str = None):
     """
     Logs in to TikTok using StealthBrowser and saves the session.
     """
-    session_file = f"tiktok_session-{login_name}"
+    # Prefer JSON, but might be legacy
+    session_file = f"tiktok_session-{login_name}.json"
+    legacy_file = f"tiktok_session-{login_name}.cookie"
+    
+    # If legacy exists but JSON doesn't, we'll migrate during save
+    target_file = session_file
+    if os.path.exists(legacy_file) and not os.path.exists(session_file):
+        print(f"Detected legacy session file: {legacy_file}. Will migrate to JSON after login.")
+
     
     print(f"Logging in as {login_name}...")
     if proxy:
@@ -49,7 +57,7 @@ async def login(login_name: str, proxy: str = None):
             await asyncio.sleep(1)
         
         print("Login successful! Saving session...")
-        await browser.save_cookies(session_file)
+        await browser.save_session(target_file)
         
     return True
 
@@ -139,12 +147,13 @@ async def create_account(proxy: str, save_name: str, timezone: str = None):
                 break
             print("Invalid input. Type 'DONE' via keyboard when ready.")
             
-        print(f"Saving session to tiktok_session-{save_name}...")
-        await browser.save_cookies(f"tiktok_session-{save_name}")
+        print(f"Saving session to {save_name}...")
+        save_file = f"tiktok_session-{save_name}.json"
+        await browser.save_session(save_file)
         # Wait a bit and save again to ensure all tokens are captured
         await asyncio.sleep(3)
-        await browser.save_cookies(f"tiktok_session-{save_name}") 
-        print("Session saved successfully.")
+        await browser.save_session(save_file) 
+        print(f"Session saved successfully to {save_file}.")
             
     return True
 
@@ -164,10 +173,13 @@ async def upload_video(session_file_path, video, title, schedule_time=0, allow_c
     _report_status("Initializing Stealth Browser...")
     
     # Initialize StealthBrowser (Headless by default, unless debugging)
-    async with StealthBrowser(headless=True, proxy=proxy) as browser:
+    async with StealthBrowser(headless=True, proxy=proxy, storage_state_path=session_file_path) as browser:
         
-        # Load cookies
-        await browser.load_cookies(session_file_path)
+        # Load session (JSON or Legacy migration handled by browser.load_session or internally by storage_state_path)
+        # If storage_state_path was passed to init, it might auto-load if JSON.
+        # But we also have load_session which handles migration logic explicitly.
+        await browser.load_session(session_file_path)
+
         
         # Validate session
         cookies = await browser.context.cookies()

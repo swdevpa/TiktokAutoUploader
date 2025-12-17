@@ -322,6 +322,11 @@ async def upload_tiktok_video(
     validate_secret_token(auth_token)
     ensure_content_type(video_file.content_type)
 
+    # Validate session file extension
+    session_ext = os.path.splitext(session_file.filename)[1].lower()
+    if session_ext not in [".json", ".cookie"]:
+        raise HTTPException(status_code=400, detail="Invalid session file format. Must be .json (preferred) or .cookie")
+
     temp_dir = None
     video_path = None
     session_path = None
@@ -526,6 +531,11 @@ async def start_warmup(
     # Validation
     if duration_minutes < 1 or duration_minutes > 120:
          raise HTTPException(status_code=400, detail="Duration must be between 1 and 120 minutes.")
+
+    # Validate session file extension
+    session_ext = os.path.splitext(session_file.filename)[1].lower()
+    if session_ext not in [".json", ".cookie"]:
+        raise HTTPException(status_code=400, detail="Invalid session file format. Must be .json (preferred) or .cookie")
 
     # Save session file temporarily
     # Note: We need to keep this file for the duration of the background task.

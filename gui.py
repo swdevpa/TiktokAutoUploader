@@ -329,12 +329,14 @@ class TiktokUploaderGUI(tk.Tk):
         cookie_dir = self.cookies_dir
         if not os.path.exists(cookie_dir):
             return []
-        users = []
+        users = set()
         for filename in os.listdir(cookie_dir):
-            if filename.startswith("tiktok_session-") and filename.endswith(".cookie"):
-                username = filename[len("tiktok_session-") : -len(".cookie")]
-                users.append(username)
-        return sorted(users)
+            if filename.startswith("tiktok_session-"):
+                if filename.endswith(".json"):
+                    users.add(filename[len("tiktok_session-") : -len(".json")])
+                elif filename.endswith(".cookie"):
+                     users.add(filename[len("tiktok_session-") : -len(".cookie")])
+        return sorted(list(users))
 
     def update_user_list(self):
         users = self._known_users()

@@ -114,8 +114,14 @@ if __name__ == "__main__":
             print("User Names logged in: ")
             cookie_dir = os.path.join(os.getcwd(), Config.get().cookies_dir)
             for name in os.listdir(cookie_dir):
-                if name.startswith("tiktok_session-") and name.endswith(".cookie"):
-                    username = name[len("tiktok_session-"):-len(".cookie")]
+                if name.startswith("tiktok_session-") and (name.endswith(".cookie") or name.endswith(".json")):
+                    # Remove prefix
+                    username = name[len("tiktok_session-"):]
+                    # Remove extension
+                    if username.endswith(".cookie"):
+                        username = username[:-len(".cookie")]
+                    elif username.endswith(".json"):
+                        username = username[:-len(".json")]
                     print(f'[-] {username}')
 
         # if flag is v then show video names

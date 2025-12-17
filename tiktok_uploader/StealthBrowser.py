@@ -8,11 +8,12 @@ from playwright.async_api import async_playwright, Page, BrowserContext
 from .cookies import load_cookies_from_file, save_cookies_to_file
 
 class StealthBrowser:
-    def __init__(self, headless=True, proxy=None, guest_mode=False, timezone_id=None):
+    def __init__(self, headless=True, proxy=None, guest_mode=False, timezone_id=None, storage_state_path=None):
         self.headless = headless
         self.proxy = proxy
         self.guest_mode = guest_mode
         self.timezone_id = timezone_id
+        self.storage_state_path = storage_state_path
         self.playwright = None
         self.browser = None
         self.context = None
@@ -116,6 +117,17 @@ class StealthBrowser:
         
         if geolocation:
             context_options["geolocation"] = geolocation
+
+        # Load storage state if provided and exists (JSON format)
+        if self.storage_state_path and os.path.exists(self.storage_state_path) and self.storage_state_path.endswith(".json"):
+             try:
+                 with open(self.storage_state_path, "r") as f:
+                     # Validate JSON content before passing to Playwright to avoid crashes
+                     json.load(f)
+                 context_options["storage_state"] = self.storage_state_path
+                 print(f"Loaded session from JSON: {self.storage_state_path}")
+             except Exception as e:
+                 print(f"Error loading storage_state JSON: {e}")
 
         self.context = await self.browser.new_context(**context_options)
 
@@ -317,7 +329,77 @@ class StealthBrowser:
             };
         """)
 
+    async def load_session(self, filename: str = None):
+        """
+        Loads session from a JSON file (Playwright storageState) OR migrates from legacy pickle.
+        If filename is provided, it overrides self.storage_state_path.
+        """
+        if self.guest_mode:
+            print("Guest mode enabled: Skipping session loading.")
+            return
+
+        target_path = filename if filename else self.storage_state_path
+        if not target_path:
+            return
+
+        # 1. Try loading JSON (Preferred)
+        # Note: If valid JSON was passed to new_context in start(), it's already loaded.
+        # But if we are calling this manually or if start() didn't find it, we check again.
+        
+        # If the file path implies JSON
+        if target_path.endswith(".json"):
+            if os.path.exists(target_path):
+                 # Already handled in start() if path was set, but if called late:
+                 print(f"Session {target_path} should be loaded via context creation. If not, cookies might be missing.")
+                 # We can't easily "add" localStorage after context creation without hacky scripts.
+                 # So we assume start() handled it, or we just load cookies if context exists.
+                 # For safety, let's load cookies from the JSON just in case.
+                 try:
+                     with open(target_path, 'r') as f:
+                         data = json.load(f)
+                         if "cookies" in data:
+                             await self.context.add_cookies(data["cookies"])
+                 except Exception as e:
+                     print(f"Error re-loading cookies from JSON: {e}")
+            else:
+                 # Check for legacy pickle to migrate NOT supported here directly? 
+                 # Better to check for legacy pickle if JSON doesn't exist.
+                 legacy_path = target_path.replace(".json", ".cookie")
+                 if os.path.exists(legacy_path):
+                     print(f"Migrating legacy pickle session: {legacy_path} -> {target_path}")
+                     await self.load_cookies(legacy_path)
+                     # We will save as JSON at the end of the session or explicitly now?
+                     # Let's just load it. The calling code should save_session() later.
+
+        # 2. Legacy Pickle Support
+        elif target_path.endswith(".cookie"):
+             await self.load_cookies(target_path)
+
+    async def save_session(self, filename: str = None):
+        """
+        Saves the current session state (Cookies + LocalStorage) to a JSON file.
+        """
+        target_path = filename if filename else self.storage_state_path
+        if not target_path:
+            return
+            
+        # Enforce JSON extension for new saves if not specified
+        if not target_path.endswith(".json") and not target_path.endswith(".cookie"):
+            target_path += ".json"
+
+        # If strict .cookie request, fall back to legacy (not recommended)
+        if target_path.endswith(".cookie"):
+             await self.save_cookies(target_path)
+             return
+
+        try:
+            await self.context.storage_state(path=target_path)
+            print(f"Session saved to {target_path} (Cookies + LocalStorage)")
+        except Exception as e:
+            print(f"Error saving session state: {e}")
+
     async def load_cookies(self, filename):
+        # Legacy support Wrapper
         if self.guest_mode:
             print("Guest mode enabled: Skipping cookie loading.")
             return
@@ -336,10 +418,12 @@ class StealthBrowser:
             
             try:
                 await self.context.add_cookies(clean_cookies)
+                print(f"Loaded {len(clean_cookies)} cookies from legacy file.")
             except Exception as e:
                 print(f"Error loading cookies: {e}")
 
     async def save_cookies(self, filename):
+        # Legacy support Wrapper
         cookies = await self.context.cookies()
         save_cookies_to_file(cookies, filename)
 

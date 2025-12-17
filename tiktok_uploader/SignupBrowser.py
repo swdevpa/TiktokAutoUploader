@@ -8,11 +8,12 @@ from playwright.async_api import async_playwright, Page, BrowserContext
 from .cookies import load_cookies_from_file, save_cookies_to_file
 
 class SignupBrowser:
-    def __init__(self, headless=True, proxy=None, guest_mode=False, timezone_id=None):
+    def __init__(self, headless=True, proxy=None, guest_mode=False, timezone_id=None, storage_state_path=None):
         self.headless = headless
         self.proxy = proxy
         self.guest_mode = guest_mode
         self.timezone_id = timezone_id
+        self.storage_state_path = storage_state_path
         self.playwright = None
         self.browser = None
         self.context = None
@@ -100,6 +101,16 @@ class SignupBrowser:
         
         if geolocation:
             context_options["geolocation"] = geolocation
+
+        # Load storage state if provided and exists (JSON format)
+        if self.storage_state_path and os.path.exists(self.storage_state_path) and self.storage_state_path.endswith(".json"):
+             try:
+                 with open(self.storage_state_path, "r") as f:
+                     json.load(f) # Validate JSON
+                 context_options["storage_state"] = self.storage_state_path
+                 print(f"Loaded session from JSON: {self.storage_state_path}")
+             except Exception as e:
+                 print(f"Error loading storage_state JSON: {e}")
 
         self.context = await self.browser.new_context(**context_options)
 
@@ -272,29 +283,74 @@ class SignupBrowser:
         except Exception as e:
             print(f"Signer page navigation warning: {e}")
 
+    async def load_session(self, filename: str = None):
+        """
+        Loads session from a JSON file (Playwright storageState) OR migrates from legacy pickle.
+        """
+        if self.guest_mode:
+            return
+
+        target_path = filename if filename else self.storage_state_path
+        if not target_path:
+            return
+
+        if target_path.endswith(".json"):
+            if os.path.exists(target_path):
+                 # Already loaded in start() via new_context if passed, but valid to check cookies
+                 print(f"Session {target_path} loaded.")
+            else:
+                 # Check migration
+                 legacy_path = target_path.replace(".json", ".cookie")
+                 if os.path.exists(legacy_path):
+                     print(f"Migrating legacy pickle session: {legacy_path} -> {target_path}")
+                     await self.load_cookies(legacy_path)
+        elif target_path.endswith(".cookie"):
+             await self.load_cookies(target_path)
+
+    async def save_session(self, filename: str = None):
+        """
+        Saves the current session state (Cookies + LocalStorage) to a JSON file.
+        """
+        target_path = filename if filename else self.storage_state_path
+        if not target_path:
+            return
+            
+        if not target_path.endswith(".json") and not target_path.endswith(".cookie"):
+            target_path += ".json"
+
+        if target_path.endswith(".cookie"):
+             await self.save_cookies(target_path)
+             return
+
+        try:
+            await self.context.storage_state(path=target_path)
+            print(f"Session saved to {target_path} (Cookies + LocalStorage)")
+        except Exception as e:
+            print(f"Error saving session state: {e}")
+
     async def load_cookies(self, filename):
+        # Legacy support
         if self.guest_mode:
             print("Guest mode enabled: Skipping cookie loading.")
             return
 
         cookies = load_cookies_from_file(filename)
         if cookies:
-            # Playwright expects 'sameSite' to be strictly typed or omitted if invalid
-            # We might need to clean up cookies from Selenium format
             clean_cookies = []
             for c in cookies:
-                # Basic cleanup
-                c.pop("expiry", None) # Playwright uses 'expires'
+                c.pop("expiry", None)
                 if "sameSite" in c and c["sameSite"] not in ["Strict", "Lax", "None"]:
                     c.pop("sameSite")
                 clean_cookies.append(c)
             
             try:
                 await self.context.add_cookies(clean_cookies)
+                print(f"Loaded {len(clean_cookies)} cookies from legacy file.")
             except Exception as e:
                 print(f"Error loading cookies: {e}")
 
     async def save_cookies(self, filename):
+        # Legacy support
         cookies = await self.context.cookies()
         save_cookies_to_file(cookies, filename)
 
