@@ -350,7 +350,10 @@ class StealthBrowser:
         if target_path.endswith(".json"):
             if os.path.exists(target_path):
                  # Already handled in start() if path was set, but if called late:
-                 print(f"Session {target_path} should be loaded via context creation. If not, cookies might be missing.")
+                 if target_path != self.storage_state_path:
+                     print(f"Session {target_path} should be loaded via context creation. If not, cookies might be missing.")
+                 else:
+                     pass # Already loaded in start()
                  # We can't easily "add" localStorage after context creation without hacky scripts.
                  # So we assume start() handled it, or we just load cookies if context exists.
                  # For safety, let's load cookies from the JSON just in case.
