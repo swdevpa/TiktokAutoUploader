@@ -390,14 +390,15 @@ async def warmup_user(session_file_path: str, proxy: str, duration_minutes: int,
     
     try:
         # Use context manager to ensure browser closes
-        async with WarmupBrowser(headless=True, proxy=proxy) as browser:
+        # CRITICAL FIX: Pass storage_state_path to init so LocalStorage is loaded!
+        async with WarmupBrowser(headless=True, proxy=proxy, storage_state_path=session_file_path) as browser:
             # browser.context is already set up with proxy/stealth in __enter__
             
-            # Load cookies
+            # Use load_session just in case (e.g. checks/migrations), but init handles the heavy lifting
             if session_file_path and Path(session_file_path).exists():
-                browser.load_cookies(session_file_path)
+                 await browser.load_session(session_file_path)
             else:
-                logger.warning("No session file found or provided. Running as guest (less effective for account warmup).")
+                 logger.warning("No session file found or provided. Running as guest (less effective for account warmup).")
 
             await browser.run_warmup(duration_minutes)
             actions = browser.actions_performed

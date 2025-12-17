@@ -525,7 +525,62 @@ def _crc32(content):
     prev = zlib.crc32(content, prev)
     return "%08x" % (prev & 0xFFFFFFFF)
 
+async def interactive_session(session_name: str, proxy: str):
+    """
+    Opens a headed browser with the loaded session for manual interaction.
+    Enforces proxy usage and Stealth/SignupBrowser for safety.
+    """
+    if not proxy:
+        print("[-] Error: A proxy is REQUIRED for interactive mode to prevent IP leaks.")
+        return False
+
+    print(f"Starting Interactive Session for {session_name}...")
+    
+    # Resolve paths
+    cookies_dir = Config.get().cookies_dir
+    session_file = os.path.join(cookies_dir, f"tiktok_session-{session_name}.json")
+    
+    # Check if session exists
+    if not os.path.exists(session_file):
+        # Fallback check
+        if os.path.exists(session_file.replace(".json", ".cookie")):
+             print("Legacy cookie file found. It will be migrated if you save.")
+             # We let load_session handle the fallback, but warn the user.
+        else:
+             print(f"[-] Warning: Session file {session_file} not found. Starting with a FRESH session.")
+
+    # Start Browser (Headed, Proxy Enforced)
+    # CRITICAL: We MUST pass storage_state_path to init so Playwright loads localStorage during context creation.
+    # Manual load_session only adds cookies.
+    async with SignupBrowser(headless=False, proxy=proxy, storage_state_path=session_file) as browser:
+        # Load session (Redundant check/cookie load, but safe)
+        await browser.load_session(session_file)
+        
+        print("Session loaded.")
+        print("Navigating to TikTok (For You)...")
+        
+        try:
+            await browser.page.goto("https://www.tiktok.com/foryou", timeout=60000, wait_until='domcontentloaded')
+        except Exception as e:
+            print(f"Error loading page: {e}")
+
+        print("\n" + "="*60)
+        print("INTERACTIVE MODE ACTIVE")
+        print("1. You can now browse, like, and warm up manually.")
+        print("2. The browser is using the proxy and stealth settings.")
+        print("3. When finished, come back here and press ENTER.")
+        print("="*60)
+        
+        input("Press ENTER to close session and save changes: ")
+        
+        print(f"Saving session to {session_file}...")
+        await browser.save_session(session_file)
+        # Double save safety
+        await asyncio.sleep(2)
+        await browser.save_session(session_file)
+        
+    print("Session saved. Browser closed.")
+    return True
+
 if __name__ == "__main__":
-    # Test login
-    # asyncio.run(login("test_user"))
     pass

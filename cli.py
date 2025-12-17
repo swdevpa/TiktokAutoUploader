@@ -43,6 +43,11 @@ if __name__ == "__main__":
     show_parser.add_argument("-u", "--users", action='store_true', help="Shows all available cookie names")
     show_parser.add_argument("-v", "--videos",  action='store_true', help="Shows all available videos")
 
+    # Interactive session (Manual Warmup)
+    interactive_parser = subparsers.add_parser("interactive", help="Open a session in a headed browser for manual interaction.")
+    interactive_parser.add_argument("-n", "--name", help="Name of the session to load", required=True)
+    interactive_parser.add_argument("-p", "--proxy", help="Proxy URL (REQUIRED)", required=True)
+
     # Parse the command-line arguments
     args = parser.parse_args()
 
@@ -141,6 +146,10 @@ if __name__ == "__main__":
                 print(f'[-] {name}')
         elif not args.users and not args.videos:
             print("No flag provided. Use -c (show all cookies) or -v (show all videos).")
+
+    elif args.subcommand == "interactive":
+        import asyncio
+        asyncio.run(tiktok.interactive_session(args.name, args.proxy))
 
     else:
         eprint("Invalid subcommand. Use 'login' or 'upload' or 'show'.")
