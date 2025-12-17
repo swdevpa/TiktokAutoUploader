@@ -54,17 +54,34 @@ class StealthBrowser:
             "--disable-infobars",
             "--no-sandbox",
             "--disable-setuid-sandbox",
+            "--ignore-certificate-errors",
+            "--autoplay-policy=no-user-gesture-required",
+            "--enable-features=NetworkService",
         ]
 
         proxy_config = None
         if self.proxy:
             proxy_config = self._parse_proxy(self.proxy)
 
-        self.browser = await self.playwright.chromium.launch(
-            headless=self.headless,
-            args=launch_args,
-            proxy=proxy_config
-        )
+        # Attempt to launch system Chrome (better codec support)
+        try:
+            print("Attempting to launch system Chrome for better media support...")
+            self.browser = await self.playwright.chromium.launch(
+                channel="chrome",
+                headless=self.headless,
+                args=launch_args,
+                proxy=proxy_config
+            )
+        except Exception as e:
+            print(f"System Chrome not found ({e}). Falling back to bundled Chromium.")
+            # Add HEVC blocking flags to force H.264 fallback on bundled Chromium
+            # This helps avoid "NotSupportedError" for HEVC on builds that lack it.
+            fallback_args = launch_args + ["--disable-features=PlatformHEVCDecoderSupport"]
+            self.browser = await self.playwright.chromium.launch(
+                headless=self.headless,
+                args=fallback_args,
+                proxy=proxy_config
+            )
 
 
 
@@ -180,14 +197,43 @@ class StealthBrowser:
             WebGLRenderingContext.prototype.getParameter = function(parameter) {
                 // UNMASKED_VENDOR_WEBGL
                 if (parameter === 37445) {
-                    return 'Intel Inc.';
+                    return 'Google Inc. (Apple)';
                 }
                 // UNMASKED_RENDERER_WEBGL
                 if (parameter === 37446) {
-                    return 'Intel Iris OpenGL Engine';
+                    return 'ANGLE (Apple, Apple M1 Pro, OpenGL 4.1)';
                 }
                 return getParameter(parameter);
             };
+
+            // Aggressive Codec Spoofing
+            const originalCanPlayType = HTMLMediaElement.prototype.canPlayType;
+            HTMLMediaElement.prototype.canPlayType = function(type) {
+                if (!type) return '';
+                // Block HEVC and HE-AAC (mp4a.40.29, mp4a.40.5)
+                if (type.includes('hevc') || type.includes('hev1') || type.includes('hvc1') || 
+                    type.includes('mp4a.40.29') || type.includes('mp4a.40.5')) {
+                    return '';
+                }
+                // Force accept H.264 and AAC-LC
+                if (type.includes('avc1') || type.includes('mp4a.40.2')) {
+                     return 'probably';
+                }
+                return originalCanPlayType.call(this, type);
+            };
+            
+            // Also override isTypeSupported for MediaSource
+            if (window.MediaSource) {
+                 const originalIsTypeSupported = window.MediaSource.isTypeSupported;
+                 window.MediaSource.isTypeSupported = function(type) {
+                     if (!type) return false;
+                     if (type.includes('hevc') || type.includes('hev1') || type.includes('hvc1') || 
+                         type.includes('mp4a.40.29') || type.includes('mp4a.40.5')) {
+                         return false;
+                     }
+                     return originalIsTypeSupported.call(this, type);
+                 };
+            }
         """)
 
         # 6. Canvas Noise Injection

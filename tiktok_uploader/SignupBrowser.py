@@ -35,17 +35,33 @@ class SignupBrowser:
             "--disable-infobars",
             "--no-sandbox",
             "--disable-setuid-sandbox",
+            "--ignore-certificate-errors",
+            "--autoplay-policy=no-user-gesture-required",
+            "--enable-features=NetworkService",
         ]
         
         proxy_config = None
         if self.proxy:
             proxy_config = self._parse_proxy(self.proxy)
 
-        self.browser = await self.playwright.chromium.launch(
-            headless=self.headless,
-            args=launch_args,
-            proxy=proxy_config
-        )
+        # Attempt to launch system Chrome (better codec support)
+        try:
+            print("Attempting to launch system Chrome for better media support...")
+            self.browser = await self.playwright.chromium.launch(
+                channel="chrome",
+                headless=self.headless,
+                args=launch_args,
+                proxy=proxy_config
+            )
+        except Exception as e:
+            print(f"System Chrome not found ({e}). Falling back to bundled Chromium.")
+            # Add HEVC blocking flags to force H.264 fallback on bundled Chromium
+            fallback_args = launch_args + ["--disable-features=PlatformHEVCDecoderSupport"]
+            self.browser = await self.playwright.chromium.launch(
+                headless=self.headless,
+                args=fallback_args,
+                proxy=proxy_config
+            )
 
 
 
@@ -158,26 +174,49 @@ class SignupBrowser:
         # """)
 
 
-        # 5. WebGL Vendor/Renderer - DISABLED (Too aggressive/mismatch risk)
-        # await context.add_init_script("""
-        #     const getParameter = WebGLRenderingContext.prototype.getParameter;
-        #     WebGLRenderingContext.prototype.getParameter = function(parameter) {
-        #         // UNMASKED_VENDOR_WEBGL
-        #         if (parameter === 37445) {
-        #             return 'Intel Inc.';
-        #         }
-        #         // UNMASKED_RENDERER_WEBGL
-        #         if (parameter === 37446) {
-        #             return 'Intel Iris OpenGL Engine';
-        #         }
-        #         return getParameter(parameter);
-        #     };
-        # """)
+        # 5. WebGL Vendor/Renderer Spoofing
+        await context.add_init_script("""
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                // UNMASKED_VENDOR_WEBGL
+                if (parameter === 37445) {
+                    return 'Google Inc. (Apple)';
+                }
+                // UNMASKED_RENDERER_WEBGL
+                if (parameter === 37446) {
+                    return 'ANGLE (Apple, Apple M1 Pro, OpenGL 4.1)';
+                }
+                return getParameter(parameter);
+            };
 
-        # 6. Canvas Noise Injection - DISABLED for stability in SignupBrowser
-        # await context.add_init_script("""
-        # ... (disabled)
-        # """)
+            // Aggressive Codec Spoofing to force H264/AAC
+            const originalCanPlayType = HTMLMediaElement.prototype.canPlayType;
+            HTMLMediaElement.prototype.canPlayType = function(type) {
+                if (!type) return '';
+                // Block HEVC and HE-AAC (mp4a.40.29, mp4a.40.5)
+                if (type.includes('hevc') || type.includes('hev1') || type.includes('hvc1') || 
+                    type.includes('mp4a.40.29') || type.includes('mp4a.40.5')) {
+                    return '';
+                }
+                // Force accept H.264 and AAC-LC
+                if (type.includes('avc1') || type.includes('mp4a.40.2')) {
+                     return 'probably';
+                }
+                return originalCanPlayType.call(this, type);
+            };
+            
+            if (window.MediaSource) {
+                 const originalIsTypeSupported = window.MediaSource.isTypeSupported;
+                 window.MediaSource.isTypeSupported = function(type) {
+                     if (!type) return false;
+                     if (type.includes('hevc') || type.includes('hev1') || type.includes('hvc1') || 
+                         type.includes('mp4a.40.29') || type.includes('mp4a.40.5')) {
+                         return false;
+                     }
+                     return originalIsTypeSupported.call(this, type);
+                 };
+            }
+        """)
 
 
         # 7. AudioContext Noise - DISABLED for stability in SignupBrowser
