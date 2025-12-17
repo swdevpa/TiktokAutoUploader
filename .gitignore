@@ -145,3 +145,4 @@ tests/*
 
 tiktok_uploader\tiktok-signature\command.txt
 .env
+tiktok_session-*.json
