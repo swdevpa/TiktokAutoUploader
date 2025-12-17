@@ -25,8 +25,9 @@ async def login(login_name: str, proxy: str = None):
     Logs in to TikTok using StealthBrowser and saves the session.
     """
     # Prefer JSON, but might be legacy
-    session_file = f"tiktok_session-{login_name}.json"
-    legacy_file = f"tiktok_session-{login_name}.cookie"
+    cookies_dir = Config.get().cookies_dir
+    session_file = os.path.join(cookies_dir, f"tiktok_session-{login_name}.json")
+    legacy_file = os.path.join(cookies_dir, f"tiktok_session-{login_name}.cookie")
     
     # If legacy exists but JSON doesn't, we'll migrate during save
     target_file = session_file
@@ -148,7 +149,8 @@ async def create_account(proxy: str, save_name: str, timezone: str = None):
             print("Invalid input. Type 'DONE' via keyboard when ready.")
             
         print(f"Saving session to {save_name}...")
-        save_file = f"tiktok_session-{save_name}.json"
+        cookies_dir = Config.get().cookies_dir
+        save_file = os.path.join(cookies_dir, f"tiktok_session-{save_name}.json")
         await browser.save_session(save_file)
         # Wait a bit and save again to ensure all tokens are captured
         await asyncio.sleep(3)
