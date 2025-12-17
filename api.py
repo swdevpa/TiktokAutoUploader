@@ -41,7 +41,7 @@ logger = logging.getLogger("api")
 
 # Keep upload limits small enough to reject malformed requests before they touch TikTok logic.
 MAX_VIDEO_BYTES = int(os.getenv("MAX_VIDEO_UPLOAD_BYTES", 250 * 1024 * 1024))
-MAX_SESSION_BYTES = int(os.getenv("MAX_SESSION_FILE_BYTES", 512 * 1024))
+MAX_SESSION_BYTES = int(os.getenv("MAX_SESSION_FILE_BYTES", 10 * 1024 * 1024))
 ALLOWED_VIDEO_CONTENT_TYPES = {
     "video/mp4",
     "video/quicktime",
