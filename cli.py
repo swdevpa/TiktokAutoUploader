@@ -88,9 +88,18 @@ if __name__ == "__main__":
                 sys.exit(1)
 
         try:
+            # Resolve session file path
+            session_file = f"tiktok_session-{args.users}"
+            if os.path.exists(f"{session_file}.json"):
+                session_file += ".json"
+            elif os.path.exists(f"{session_file}.cookie"):
+                session_file += ".cookie"
+            else:
+                session_file += ".json" # Default fallthrough
+
             import asyncio
             asyncio.run(tiktok.upload_video(
-                f"tiktok_session-{args.users}",
+                session_file,
                 args.video,
                 args.title,
                 args.schedule,

@@ -602,9 +602,12 @@ class TiktokUploaderGUI(tk.Tk):
                 video_path = upscale_video_with_videotoolbox(video_path)
 
             self._report_status("Starte Upload zu TikTok.")
-            session_file_path = os.path.join(self.cookies_dir, f"tiktok_session-{job['user']}.cookie")
+            session_file_path = os.path.join(self.cookies_dir, f"tiktok_session-{job['user']}.json")
             if not os.path.exists(session_file_path):
-                raise RuntimeError(f"Cookie-Datei für Nutzer {job['user']} nicht gefunden.")
+                session_file_path = os.path.join(self.cookies_dir, f"tiktok_session-{job['user']}.cookie")
+            
+            if not os.path.exists(session_file_path):
+                raise RuntimeError(f"Session-Datei für Nutzer {job['user']} nicht gefunden.")
 
             import asyncio
             success = asyncio.run(tiktok.upload_video(
