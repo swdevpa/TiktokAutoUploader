@@ -250,21 +250,36 @@ def generate_fadein_video_with_ffmpeg(image_paths: list[Path], output_path: Path
     if header_text:
         filter_complex_parts.append(f"[v_concat]format=yuv420p,fade=t=in:st=0:d={fade_duration},fps=30[v_faded];")
         
-        # Drawtext filter
-        # text='{safe_text}'
-        # fontcolor=white
-        # fontsize=48
-        # x=(w-text_w)/2
-        # y=h*0.15
-        # borderw=2
-        # bordercolor=black
-        # shadowx=2
-        # shadowy=2
+        # Word wrap the text manually (FFmpeg drawtext doesn't auto-wrap)
+        # Insert newlines every ~18-20 characters at word boundaries
+        words = header_text.split()
+        lines = []
+        current_line = ""
+        max_chars_per_line = 18
         
-        safe_text = header_text.replace(":", "\\:").replace("'", "'")
+        for word in words:
+            if len(current_line) + len(word) + 1 <= max_chars_per_line:
+                current_line = f"{current_line} {word}".strip()
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+        if current_line:
+            lines.append(current_line)
+        
+        wrapped_text = "\\n".join(lines)
+        
+        # Escape special characters for FFmpeg
+        safe_text = wrapped_text.replace(":", "\\:").replace("'", "'")
+        
+        # Larger font (72px), centered, with strong shadow for readability
+        # Using line_spacing for multi-line text
         drawtext_filter = (
-            f"[v_faded]drawtext=text='{safe_text}':fontcolor=white:fontsize=48:"
-            "x=(w-text_w)/2:y=h*0.15:borderw=2:bordercolor=black:shadowx=2:shadowy=2[v_final]"
+            f"[v_faded]drawtext=text='{safe_text}':"
+            "fontcolor=white:fontsize=72:line_spacing=10:"
+            "x=(w-text_w)/2:y=h*0.10:"
+            "borderw=3:bordercolor=black:"
+            "shadowcolor=black@0.7:shadowx=3:shadowy=3[v_final]"
         )
         filter_complex_parts.append(drawtext_filter)
     else:
