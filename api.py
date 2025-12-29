@@ -267,15 +267,20 @@ def generate_fadein_video_with_ffmpeg(image_paths: list[Path], output_path: Path
         if current_line:
             lines.append(current_line)
         
-        wrapped_text = "\\n".join(lines)
+        # Join with actual newlines for the text file
+        wrapped_text = "\n".join(lines)
         
-        # Escape special characters for FFmpeg
-        safe_text = wrapped_text.replace(":", "\\:").replace("'", "'")
+        # Write text to a temporary file (FFmpeg textfile= handles newlines properly)
+        text_file_path = output_path.parent / "header_text.txt"
+        with open(text_file_path, "w", encoding="utf-8") as f:
+            f.write(wrapped_text)
+        
+        # Escape the file path for FFmpeg (colons need escaping)
+        safe_path = str(text_file_path).replace(":", "\\:")
         
         # Larger font (72px), centered, with strong shadow for readability
-        # Using line_spacing for multi-line text
         drawtext_filter = (
-            f"[v_faded]drawtext=text='{safe_text}':"
+            f"[v_faded]drawtext=textfile='{safe_path}':"
             "fontcolor=white:fontsize=72:line_spacing=10:"
             "x=(w-text_w)/2:y=h*0.10:"
             "borderw=3:bordercolor=black:"
